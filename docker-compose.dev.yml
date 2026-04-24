@@ -1,0 +1,32 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ./Dockerfile
+      target: dev
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./backend/data:/app/data
+    networks:
+      - brimble-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ./Dockerfile
+      target: dev
+    networks:
+      - brimble-net
+
+  caddy:
+    image: caddy:latest
+    ports:
+      - "80:80"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+    networks:
+      - brimble-net
+
+networks:
+  brimble-net:
+    driver: bridge
