@@ -1,0 +1,17 @@
+{
+    "verbose": true,
+    "watch": [
+        "*.*",
+        "src"
+    ],
+    "ignore": [
+        "bin"
+    ],
+    "ext": [
+        "ts",
+        "js",
+        "json"
+    ],
+    "exec": "ts-node -r tsconfig-paths/register src/index.ts",
+    "delay": 1
+}
