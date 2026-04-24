@@ -1,5 +1,18 @@
 # --- STAGE 1: The "base" with all dependencies ---
 FROM node:24-slim AS base
+# Install System Dependencies for Deb
+RUN apt-get update && apt-get install -y \
+    docker.io \
+    git \
+    curl \
+    bash \
+    openssh-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Railpack
+RUN curl -fsSL https://railpack.io/install.sh | sh
+
+# application install
 WORKDIR /app 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY package.json pnpm-lock.yaml ./

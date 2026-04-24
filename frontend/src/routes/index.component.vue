@@ -166,14 +166,6 @@ const truncateTag = (tag: string): string =>
         </div>
 
         <div class="w-px h-3.5 bg-border" />
-
-        <!-- Talk to Founder -->
-        <button
-          class="flex items-center gap-1.5 text-[11px] font-medium text-primary bg-surface border border-border hover:border-[#6b7cff] hover:text-accent px-3 py-1.5 rounded transition-colors cursor-pointer"
-        >
-          <Icon icon="mdi:chat-processing-outline" :width="13" />
-          Talk to Founder
-        </button>
       </div>
     </div>
   </header>

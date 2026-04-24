@@ -13,6 +13,10 @@ preRouteMiddleware(app);
 import routes from "./routes";
 app.use(routes);
 
+// Error middlewares
+import errorMiddleware from "./middlewares/error-middleware";
+errorMiddleware(app);
+
 // Listen to server port
 const { PORT } = CONFIGS;
 httpServer.listen(PORT, async () => {
