@@ -20,6 +20,9 @@ importers:
       '@tanstack/vue-router':
         specifier: ^1.168.19
         version: 1.168.19(vue@3.5.33(typescript@6.0.3))
+      dayjs:
+        specifier: ^1.11.20
+        version: 1.11.20
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
@@ -1221,6 +1224,9 @@ packages:
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
+
+  dayjs@1.11.20:
+    resolution: {integrity: sha512-YbwwqR/uYpeoP4pu043q+LTDLFBLApUP6VxRihdfNTqu4ubqMlGDLd6ErXhEgsyvY0K6nCs7nggYumAN+9uEuQ==}
 
   debug@4.4.3:
     resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
@@ -2815,6 +2821,8 @@ snapshots:
   cookie-es@3.1.1: {}
 
   csstype@3.2.3: {}
+
+  dayjs@1.11.20: {}
 
   debug@4.4.3:
     dependencies:

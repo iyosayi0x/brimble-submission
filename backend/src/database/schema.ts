@@ -6,7 +6,7 @@ import {
   varchar,
   integer,
   uniqueIndex,
-  foreignKey,
+  index,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -43,5 +43,6 @@ export const deployments = pgTable(
   (table) => [
     // Composite index: Ensure version 1 of project A is unique
     uniqueIndex("project_version_idx").on(table.projectId, table.versionNumber),
+    index("project_idx").on(table.projectId),
   ],
 );

@@ -1,138 +1,89 @@
 <script setup lang="ts">
-import { ref, onUnmounted } from "vue";
-import { useQuery } from "@tanstack/vue-query";
+import { ref, computed, onUnmounted } from "vue";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/vue-query";
 import { Icon } from "@iconify/vue";
+
 import LogTerminal from "../components/LogTerminal.vue";
-import StatusBadge from "../components/StatusBadge.vue";
 import SkeletonRow from "../components/SkeletonRow.vue";
+import { fetchProjects, subscribeToLogs } from "../lib/http/query";
+import { deployProject } from "../lib/http/mutations";
+import {
+  timeAgo,
+  projectColor,
+  projectInitial,
+  truncateUrl,
+} from "../lib/utils";
 
-type DeploymentStatus = "RUNNING" | "BUILDING" | "FAILED" | "IDLE";
-
-interface Deployment {
-  id: number;
-  project: string;
-  status: DeploymentStatus;
-  imageTag: string;
-  url: string;
-  ago: string;
-}
-
-const MOCK_DEPLOYMENTS: Deployment[] = [
-  {
-    id: 1,
-    project: "web-frontend",
-    status: "RUNNING",
-    imageTag: "sha256:a1b2c3d4e5f6",
-    url: "frontend.brimble.app",
-    ago: "2 min ago",
-  },
-  {
-    id: 2,
-    project: "api-service",
-    status: "BUILDING",
-    imageTag: "sha256:e4f5a9b1c2d3",
-    url: "api.brimble.app",
-    ago: "5 min ago",
-  },
-  {
-    id: 3,
-    project: "blog-platform",
-    status: "FAILED",
-    imageTag: "sha256:c7d8e2f3a4b5",
-    url: "blog.brimble.app",
-    ago: "12 min ago",
-  },
-  {
-    id: 4,
-    project: "worker-queue",
-    status: "RUNNING",
-    imageTag: "sha256:g9h0i1j2k3l4",
-    url: "worker.brimble.app",
-    ago: "1 hr ago",
-  },
-  {
-    id: 5,
-    project: "auth-gateway",
-    status: "IDLE",
-    imageTag: "sha256:m5n6o7p8q9r0",
-    url: "auth.brimble.app",
-    ago: "3 hr ago",
-  },
-];
-
-const { data: deployments, isLoading } = useQuery({
-  queryKey: ["deployments"],
-  queryFn: async (): Promise<Deployment[]> => {
-    await new Promise((r) => setTimeout(r, 1500));
-    return MOCK_DEPLOYMENTS;
-  },
-});
-
+/**
+ * refs
+ */
 const gitUrl = ref("");
-const isDeploying = ref(false);
 const buildLogs = ref<string[]>([]);
 const buildStatus = ref("Idle");
 const isBuilding = ref(false);
 
-const LOG_LINES = [
-  "Step 1/5: Cloning repository...",
-  "Step 1/5: Clone complete (0.8s)",
-  "Step 2/5: Detecting stack with Railpack...",
-  "Step 2/5: Detected Node.js 20 + Vite",
-  "Step 3/5: Installing dependencies (pnpm install)...",
-  "Step 3/5: 247 packages installed (8.2s)",
-  "Step 4/5: Building application (vite build)...",
-  "Step 4/5: Build complete → dist/ (12.4s)",
-  "Step 5/5: Pushing Docker image to registry...",
-  "Step 5/5: Image pushed sha256:a1b2c3d4 (4.1s)",
-  "✓ Deployment complete. Live at https://app.brimble.io",
-];
+/**
+ * query client
+ */
+const queryClient = useQueryClient();
 
-let logTimer: number | null = null;
-
-const handleDeploy = () => {
-  if (!gitUrl.value.trim() || isDeploying.value) return;
-
-  isDeploying.value = true;
-  isBuilding.value = true;
-  buildStatus.value = "Building...";
-  buildLogs.value = [];
-
-  let idx = 0;
-  logTimer = window.setInterval(() => {
-    if (idx < LOG_LINES.length) {
-      buildLogs.value.push(LOG_LINES[idx]);
-      idx++;
-    } else {
-      if (logTimer !== null) clearInterval(logTimer);
-      logTimer = null;
-      buildStatus.value = "Complete";
-      isBuilding.value = false;
-      isDeploying.value = false;
-    }
-  }, 700);
-};
-
-onUnmounted(() => {
-  if (logTimer !== null) clearInterval(logTimer);
+/**
+ * query
+ */
+const { data: projectsResponse, isLoading } = useQuery({
+  queryKey: ["projects"],
+  queryFn: fetchProjects,
+  refetchInterval: 10_000,
 });
 
-const PROJECT_COLORS = [
-  "#6b7cff",
-  "#22c55e",
-  "#f59e0b",
-  "#a855f7",
-  "#06b6d4",
-  "#ec4899",
-];
+/**
+ * computed
+ */
+const projects = computed(() => projectsResponse.value?.data?.items ?? []);
 
-const projectColor = (name: string): string =>
-  PROJECT_COLORS[name.charCodeAt(0) % PROJECT_COLORS.length];
+/**
+ * mutation
+ */
+const { mutate: deploy, isPending: isDeploying } = useMutation({
+  mutationFn: (url: string) => deployProject(url),
+  onMutate: () => {
+    buildLogs.value = [];
+    buildStatus.value = "Building...";
+    isBuilding.value = true;
+    stopLogs?.();
+    stopLogs = null;
+  },
+  onSuccess: (res) => {
+    const deploymentId = res.data.id;
+    stopLogs = subscribeToLogs(
+      deploymentId,
+      (msg) => buildLogs.value.push(msg),
+      () => {
+        buildStatus.value = "Complete";
+        isBuilding.value = false;
+        queryClient.invalidateQueries({ queryKey: ["projects"] });
+      },
+    );
+  },
+  onError: () => {
+    buildStatus.value = "Failed";
+    isBuilding.value = false;
+  },
+});
 
-const projectInitial = (name: string): string => name[0].toUpperCase();
+/**
+ * methods
+ */
+let stopLogs: (() => void) | null = null;
+const handleDeploy = () => {
+  if (!gitUrl.value.trim() || isDeploying.value) return;
+  deploy(gitUrl.value);
+};
 
-const truncateTag = (tag: string): string =>
-  tag.startsWith("sha256:") ? `sha256:${tag.slice(7, 14)}` : tag;
+/**
+ * life cycle
+ */
+onUnmounted(() => stopLogs?.());
 </script>
 
 <template>
@@ -141,18 +92,14 @@ const truncateTag = (tag: string): string =>
     class="sticky top-0 z-50 border-b border-border bg-base/90 backdrop-blur-sm"
   >
     <div class="max-w-5xl mx-auto px-6 h-12 flex items-center justify-between">
-      <!-- Logo -->
       <div class="flex items-center gap-2">
         <Icon icon="mdi:rocket-launch" class="text-accent" :width="16" />
         <span class="text-sm font-bold text-primary tracking-tight">
-          Brimble
-          <span class="text-accent">Mini</span>
+          Brimble <span class="text-accent">Mini</span>
         </span>
       </div>
 
-      <!-- Right controls -->
       <div class="flex items-center gap-4">
-        <!-- System Status -->
         <div class="flex items-center gap-1.5">
           <span class="relative flex h-1.5 w-1.5">
             <span
@@ -164,7 +111,6 @@ const truncateTag = (tag: string): string =>
           </span>
           <span class="text-[11px] text-muted">All Systems Operational</span>
         </div>
-
         <div class="w-px h-3.5 bg-border" />
       </div>
     </div>
@@ -210,14 +156,6 @@ const truncateTag = (tag: string): string =>
           {{ isDeploying ? "Deploying…" : "Deploy" }}
         </button>
       </form>
-
-      <p class="mt-2 text-[11px] text-[#52525c]">
-        Supports
-        <span class="text-muted">Vite</span>,
-        <span class="text-muted">Go</span>, and
-        <span class="text-muted">TypeScript</span> via
-        <span class="text-accent font-medium">Railpack</span>.
-      </p>
     </section>
 
     <!-- Live Logs Terminal -->
@@ -227,7 +165,7 @@ const truncateTag = (tag: string): string =>
       :is-building="isBuilding"
     />
 
-    <!-- Deployments Table -->
+    <!-- Projects Table -->
     <section
       class="border border-border rounded bg-surface overflow-hidden shadow-brutal"
     >
@@ -239,11 +177,11 @@ const truncateTag = (tag: string): string =>
           <span
             class="text-[11px] font-semibold text-subtle uppercase tracking-widest"
           >
-            Deployments
+            Projects
           </span>
         </div>
         <span class="text-[10px] font-mono text-subtle">
-          {{ deployments?.length ?? 0 }} total
+          {{ projects.length }} total
         </span>
       </div>
 
@@ -258,31 +196,40 @@ const truncateTag = (tag: string): string =>
             <th
               class="text-left px-4 py-2 text-[10px] font-semibold text-subtle uppercase tracking-wider"
             >
-              Status
+              Slug
             </th>
             <th
               class="text-left px-4 py-2 text-[10px] font-semibold text-subtle uppercase tracking-wider"
             >
-              Image Tag
+              Git URL
             </th>
             <th
               class="text-left px-4 py-2 text-[10px] font-semibold text-subtle uppercase tracking-wider"
             >
-              URL
+              Created
             </th>
           </tr>
         </thead>
         <tbody>
-          <!-- Skeleton while loading -->
           <template v-if="isLoading">
             <SkeletonRow v-for="i in 4" :key="i" />
           </template>
 
-          <!-- Data rows -->
+          <template v-else-if="projects.length === 0">
+            <tr>
+              <td
+                colspan="4"
+                class="px-4 py-8 text-center text-[11px] text-muted"
+              >
+                No projects yet. Deploy one above.
+              </td>
+            </tr>
+          </template>
+
           <template v-else>
             <tr
-              v-for="dep in deployments"
-              :key="dep.id"
+              v-for="project in projects"
+              :key="project.id"
               class="border-b border-elevated last:border-0 hover:bg-surface transition-colors"
             >
               <td class="px-4 py-2.5">
@@ -290,42 +237,41 @@ const truncateTag = (tag: string): string =>
                   <div
                     class="w-6 h-6 rounded flex items-center justify-center text-[11px] font-bold shrink-0"
                     :style="{
-                      backgroundColor: projectColor(dep.project) + '1a',
-                      border: `1px solid ${projectColor(dep.project)}33`,
-                      color: projectColor(dep.project),
+                      backgroundColor: projectColor(project.name) + '1a',
+                      border: `1px solid ${projectColor(project.name)}33`,
+                      color: projectColor(project.name),
                     }"
                   >
-                    {{ projectInitial(dep.project) }}
+                    {{ projectInitial(project.name) }}
                   </div>
-                  <div>
-                    <div class="text-xs font-medium text-primary">
-                      {{ dep.project }}
-                    </div>
-                    <div class="text-[10px] text-[#52525c]">{{ dep.ago }}</div>
-                  </div>
+                  <span class="text-xs font-medium text-primary">
+                    {{ project.name }}
+                  </span>
                 </div>
               </td>
 
               <td class="px-4 py-2.5">
-                <StatusBadge :status="dep.status" />
-              </td>
-
-              <td class="px-4 py-2.5">
                 <span class="font-mono text-[11px] text-muted">
-                  {{ truncateTag(dep.imageTag) }}
+                  {{ project.slug }}
                 </span>
               </td>
 
               <td class="px-4 py-2.5">
                 <a
-                  :href="`https://${dep.url}`"
+                  :href="project.gitUrl"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="inline-flex items-center gap-1 text-[11px] text-accent hover:text-accent-hover transition-colors font-mono"
                 >
-                  {{ dep.url }}
+                  {{ truncateUrl(project.gitUrl) }}
                   <Icon icon="mdi:open-in-new" :width="10" />
                 </a>
+              </td>
+
+              <td class="px-4 py-2.5">
+                <span class="text-[11px] text-muted">
+                  {{ timeAgo(project.createdAt) }}
+                </span>
               </td>
             </tr>
           </template>
@@ -334,7 +280,7 @@ const truncateTag = (tag: string): string =>
     </section>
   </main>
 
-  <!-- ── Footer — Pipeline Health ── -->
+  <!-- ── Footer ── -->
   <footer class="border-t border-border mt-8">
     <div
       class="max-w-5xl mx-auto px-6 py-3.5 flex items-center justify-between"

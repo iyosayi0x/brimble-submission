@@ -1,6 +1,6 @@
 import { logEmitter } from "@/utils/log-emitter";
 import { Request, Response } from "express";
-import yup from "yup";
+import * as yup from "yup";
 
 export class LogController {
   async pullLogsByDeploymentId(req: Request, res: Response) {

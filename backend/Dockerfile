@@ -11,9 +11,10 @@ RUN apt-get update && apt-get install -y \
 
 # Install Railpack
 RUN curl -fsSL https://railpack.io/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
 
 # application install
-WORKDIR /app 
+WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
@@ -21,7 +22,7 @@ RUN pnpm install --frozen-lockfile
 # --- STAGE 2: The "dev" stage ---
 FROM base AS dev
 COPY . .
-CMD ["pnpm", "dev"]
+CMD pnpm db:push && pnpm dev
 
 # --- STAGE 3: The "builder" stage for production ---
 FROM base AS builder
@@ -31,10 +32,18 @@ RUN pnpm build
 # --- STAGE 4: The "runner" stage (Production) ---
 FROM node:24-slim AS runner
 ENV NODE_ENV=production
-WORKDIR /app 
+RUN apt-get update && apt-get install -y \
+    docker.io \
+    git \
+    curl \
+    bash \
+    openssh-client \
+    && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://railpack.io/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+WORKDIR /app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
-USER node
-EXPOSE 8000 
+EXPOSE 8000
 CMD ["node", "dist/index.js"]

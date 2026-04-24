@@ -1,6 +1,7 @@
 import db from "@/database";
 import { projects } from "@/database/schema";
 import { Project } from "@/types/dynamic";
+import cursorPaginate from "@/utils/pagination";
 import { eq } from "drizzle-orm";
 
 class ProjectService {
@@ -43,6 +44,18 @@ class ProjectService {
     }
 
     return project;
+  }
+
+  /**
+   * cursor paginated projects
+   * @param cursor
+   * @returns PaginatedData<projects[]>
+   */
+  async listProjects(cursor?: string) {
+    return cursorPaginate("projects", {
+      cursor,
+      limit: 20,
+    });
   }
 }
 

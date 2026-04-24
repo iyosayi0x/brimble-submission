@@ -7,8 +7,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./backend:/app/
-      - /backend/node_modules
-    env_file: ./backend/.env
+      - /app/node_modules
+    env_file: .env
     depends_on:
       db:
         condition: service_healthy
@@ -21,6 +21,7 @@ services:
       context: ./frontend
       dockerfile: ./Dockerfile
       target: ${ENVIRONMENT:-runner}
+    env_file: .env
     volumes:
       - /frontend/node_modules
     networks:
@@ -29,8 +30,6 @@ services:
 
   caddy:
     image: caddy:latest
-    environment:
-      - FRONTEND_PORT=80
     ports:
       - "80:80"
     volumes:
@@ -58,6 +57,8 @@ services:
       retries: 5
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - brimble-net
 
 networks:
   brimble-net:

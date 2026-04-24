@@ -1,3 +1,8 @@
+{
+    # Global options
+    admin 0.0.0.0:2019 # Allows your Backend to talk to Caddy's API 
+}
+
 # This handles the Frontend (Vite)
 http://localhost {
     reverse_proxy frontend:{$FRONTEND_PORT:5173}

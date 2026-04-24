@@ -9,6 +9,7 @@ import CustomError from "@/utils/custom-error";
 import projectService from "./project.service";
 import deploymentService from "./deployment.service";
 import { buildQueue } from "@/utils/build.queue";
+import dockerService from "./docker.service";
 
 export class BuildService {
   private static STORAGE_PATH = "/tmp/brimble-builds";
@@ -66,7 +67,7 @@ export class BuildService {
         tx,
       );
 
-      return { deployment, gitUrl, imageTag };
+      return { deployment, gitUrl, imageTag, project };
     });
 
     /**
@@ -80,6 +81,7 @@ export class BuildService {
         result.deployment.id,
         result.gitUrl,
         result.imageTag,
+        result.project.slug,
       );
     });
 
@@ -90,6 +92,7 @@ export class BuildService {
     deploymentId: string,
     gitUrl: string,
     imageTag: string,
+    projectSlug: string,
   ) {
     try {
       /**
@@ -104,12 +107,12 @@ export class BuildService {
        */
       await BuildService.execute(deploymentId, gitUrl, imageTag);
 
-      /**
-       * update deployment status to running
-       */
-      await deploymentService.updateDeployment(deploymentId, {
-        status: "RUNNING",
-      });
+      logEmitter.emit(
+        `logs:${deploymentId}`,
+        "--- Step 3: Launching Container ---\n",
+      );
+
+      await dockerService.runContainer(deploymentId, imageTag, projectSlug);
     } catch (error) {
       console.error(`[Build Error] Deployment ${deploymentId}:`, error);
       await deploymentService.updateDeployment(deploymentId, {
@@ -146,7 +149,12 @@ export class BuildService {
 
       return new Promise((resolve, reject) => {
         // Run railpack build [path] -t [tag]
-        const builder = spawn("railpack", ["build", repoPath, "-t", imageTag]);
+        const builder = spawn("railpack", ["build", repoPath, "-t", imageTag], {
+          env: {
+            ...process.env,
+            PATH: `/root/.local/bin:${process.env.PATH}`,
+          },
+        });
 
         builder.stdout.on("data", (data) => {
           // Stream logs directly to the EventEmitter for SSE

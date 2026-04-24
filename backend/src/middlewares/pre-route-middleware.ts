@@ -6,13 +6,18 @@ import cors from "cors";
 
 const CORS_SETTINGS = {
   credentials: true,
-  exposedHeaders: ["*"],
-  origin: [
-    "http://localhost",
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://localhost:8080",
-  ],
+  origin: (
+    origin: string | undefined,
+    callback: (err: Error | null, allow?: boolean) => void,
+  ) => {
+    // Allow requests with no origin (curl, server-to-server)
+    if (!origin) return callback(null, true);
+    // Allow any localhost origin (plain or any subdomain/port)
+    if (/^https?:\/\/([^.]+\.)?localhost(:\d+)?$/.test(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error(`CORS: origin not allowed — ${origin}`));
+  },
 };
 
 export default (app: Application) => {

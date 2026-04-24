@@ -7,4 +7,6 @@ buildRouter.post("/deploy", (req, res, next) =>
   buildController.deploy(req, res, next),
 );
 
+buildRouter.get("/projects", buildController.listProjects);
+
 export default buildRouter;

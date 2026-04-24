@@ -1,7 +1,8 @@
 import { Response, Request, NextFunction } from "express";
-import yup from "yup";
+import * as yup from "yup";
 import buildService from "@/services/build.service";
 import response from "@/utils/response";
+import projectService from "@/services/project.service";
 
 class BuildController {
   async deploy(req: Request, res: Response, next: NextFunction) {
@@ -16,6 +17,12 @@ class BuildController {
     } catch (error) {
       next(error);
     }
+  }
+
+  async listProjects(req: Request, res: Response) {
+    const cursor = await yup.string().optional().validate(req.params.next);
+    const results = await projectService.listProjects(cursor);
+    return res.status(200).json(response("Projects", results));
   }
 }
 
