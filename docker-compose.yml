@@ -6,9 +6,14 @@ services:
       target: ${ENVIRONMENT:-runner}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./backend/data:/app/data
+      - ./backend:/app/
+    env_file: ./backend/.env
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
-      - brimble-net-prod
+      - brimble-net
+    restart: unless-stopped
 
   frontend:
     build:
@@ -16,7 +21,8 @@ services:
       dockerfile: ./Dockerfile
       target: ${ENVIRONMENT:-runner}
     networks:
-      - brimble-net-prod
+      - brimble-net
+    restart: unless-stopped
 
   caddy:
     image: caddy:latest
@@ -26,9 +32,33 @@ services:
       - "80:80"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+    depends_on:
+      backend:
+        condition: service_started
+      frontend:
+        condition: service_started
     networks:
-      - brimble-net-prod
+      - brimble-net
+    restart: unless-stopped
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: ${PG_DB_NAME}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER} -d ${PG_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - pgdata:/var/lib/postgresql/data
 
 networks:
-  brimble-net-prod:
+  brimble-net:
     driver: bridge
+
+volumes:
+  pgdata:

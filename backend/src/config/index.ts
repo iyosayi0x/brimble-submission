@@ -1,9 +1,10 @@
+import { _require_env } from "./utils";
+
 const DEFAULT_PORT = 8000;
 
 const CONFIGS = {
-  PORT: process.env.PORT
-    ? (Number(process.env.PORT) ?? DEFAULT_PORT)
-    : DEFAULT_PORT,
+  PORT: Number(process.env.PORT) || DEFAULT_PORT,
+  DATABASE_URL: _require_env("DATABASE_URL"),
 };
 
 export default CONFIGS;
