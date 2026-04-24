@@ -1,10 +1,6 @@
-import { h } from "vue";
-import { Outlet, createRootRoute } from "@tanstack/vue-router";
+import { createRootRoute } from "@tanstack/vue-router";
+import Layout from "../components/Layout.vue";
 
 export const Route = createRootRoute({
-  component: RootComponent,
+  component: Layout,
 });
-
-function RootComponent() {
-  return h("div", {}, ['Hello "__root"!', h(Outlet)]);
-}
