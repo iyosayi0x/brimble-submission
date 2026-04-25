@@ -2,7 +2,8 @@ import db from "@/database";
 import { deployments } from "@/database/schema";
 import { Deployment } from "@/types/dynamic";
 import cursorPaginate from "@/utils/pagination";
-import { and, desc, eq, gt } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, ne } from "drizzle-orm";
+import dockerService from "./docker.service";
 
 class DeploymentService {
   /**
@@ -109,18 +110,62 @@ class DeploymentService {
   /**
    * remove a deployment row
    */
-  async deleteDeploymentRow(
-    deploymentId: string,
-    tx: TransactionClient = db,
-  ) {
+  async deleteDeploymentRow(deploymentId: string, tx: TransactionClient = db) {
     await tx.delete(deployments).where(eq(deployments.id, deploymentId));
   }
 
+  /**
+   * paginated return deployments
+   * @param projectId
+   * @param cursor
+   * @returns PaginatedData<Deployment>
+   */
   async listDeploymentVersions(projectId: string, cursor?: string) {
     return cursorPaginate("deployments", {
       cursor,
       where: eq(deployments.projectId, projectId),
     });
+  }
+
+  /**
+   * shuts down running deployments on server stop
+   * @returns void
+   */
+  async shutDownRunningDeployments() {
+    console.log("::> Dropping all running containers");
+    /**
+     * find active deployments
+     */
+    const activeDeployments = await db
+      .select()
+      .from(deployments)
+      .where(
+        and(
+          eq(deployments.status, "RUNNING"),
+          isNotNull(deployments.containerId),
+        ),
+      );
+    console.log(activeDeployments);
+
+    /**
+     * remove containers
+     */
+    await Promise.all(
+      activeDeployments.map(async (deployment) => {
+        dockerService.stopAndRemoveContainer(deployment.containerId!);
+      }),
+    );
+
+    /**
+     * change status
+     */
+    const deploymentIds = activeDeployments.map((item) => item.id);
+    return await db
+      .update(deployments)
+      .set({
+        status: "STOPPED",
+      })
+      .where(inArray(deployments.id, deploymentIds));
   }
 }
 

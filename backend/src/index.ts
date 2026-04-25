@@ -15,6 +15,7 @@ app.use(routes);
 
 // Error middlewares
 import errorMiddleware from "./middlewares/error-middleware";
+import deploymentService from "./services/deployment.service";
 errorMiddleware(app);
 
 // Listen to server port
@@ -28,7 +29,12 @@ httpServer.on("error", (error) => {
   console.error(`<::: An error occurred on the server: \n ${error}`);
 });
 
+httpServer.on("close", async () => {
+  await deploymentService.shutDownRunningDeployments();
+});
+
 const gracefulShutdown = async () => {
+  await deploymentService.shutDownRunningDeployments();
   console.log(":::> Received kill signal, shutting down gracefully");
   process.exit(0);
 };
