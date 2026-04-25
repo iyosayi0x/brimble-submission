@@ -2,6 +2,7 @@
 import { ref, computed, onUnmounted } from "vue";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/vue-query";
 import { Icon } from "@iconify/vue";
+import { toast } from "vue3-toastify";
 
 import LogTerminal from "../components/LogTerminal.vue";
 import SkeletonRow from "../components/SkeletonRow.vue";
@@ -12,7 +13,9 @@ import {
   projectColor,
   projectInitial,
   truncateUrl,
+  extractErrorMessage,
 } from "../lib/utils";
+import ProjectModal from "../components/ProjectModal.vue";
 
 /**
  * refs
@@ -21,6 +24,7 @@ const gitUrl = ref("");
 const buildLogs = ref<string[]>([]);
 const buildStatus = ref("Idle");
 const isBuilding = ref(false);
+const selectedProject = ref<Project | null>(null);
 
 /**
  * query client
@@ -65,7 +69,8 @@ const { mutate: deploy, isPending: isDeploying } = useMutation({
       },
     );
   },
-  onError: () => {
+  onError: (error) => {
+    toast.error(extractErrorMessage(error));
     buildStatus.value = "Failed";
     isBuilding.value = false;
   },
@@ -78,6 +83,12 @@ let stopLogs: (() => void) | null = null;
 const handleDeploy = () => {
   if (!gitUrl.value.trim() || isDeploying.value) return;
   deploy(gitUrl.value);
+};
+const handleShowProject = (project: Project) => {
+  selectedProject.value = project;
+};
+const handleCloseProject = () => {
+  selectedProject.value = null;
 };
 
 /**
@@ -117,7 +128,7 @@ onUnmounted(() => stopLogs?.());
   </header>
 
   <!-- ── Main Content ── -->
-  <main class="max-w-5xl mx-auto px-6 py-6 space-y-4">
+  <main class="max-w-5xl mx-auto px-6 py-6 space-y-4 pb-10">
     <!-- Deploy Card -->
     <section class="border border-border rounded bg-surface p-4 shadow-brutal">
       <div class="flex items-center gap-2 mb-3">
@@ -230,7 +241,8 @@ onUnmounted(() => stopLogs?.());
             <tr
               v-for="project in projects"
               :key="project.id"
-              class="border-b border-elevated last:border-0 hover:bg-surface transition-colors"
+              class="border-b border-elevated last:border-0 hover:bg-surface transition-colors cursor-pointer"
+              @click="() => handleShowProject(project)"
             >
               <td class="px-4 py-2.5">
                 <div class="flex items-center gap-2.5">
@@ -281,7 +293,7 @@ onUnmounted(() => stopLogs?.());
   </main>
 
   <!-- ── Footer ── -->
-  <footer class="border-t border-border mt-8">
+  <footer class="border-t border-border mt-8 fixed bottom-0 left-0 right-0">
     <div
       class="max-w-5xl mx-auto px-6 py-3.5 flex items-center justify-between"
     >
@@ -321,4 +333,11 @@ onUnmounted(() => stopLogs?.());
       </span>
     </div>
   </footer>
+
+  <!-- ---- project modal ---  -->
+  <ProjectModal
+    v-if="selectedProject"
+    :project="selectedProject"
+    @close="handleCloseProject"
+  />
 </template>

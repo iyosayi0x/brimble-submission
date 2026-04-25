@@ -4,6 +4,11 @@ import fetchClient from "./index";
 export const fetchProjects = () =>
   fetchClient<BaseAPIResponse<PaginatedData<Project>>>("/build/projects");
 
+export const fetchDeploymentVersions = (projectId: string) =>
+  fetchClient<BaseAPIResponse<PaginatedData<Deployment>>>(
+    `/build/projects/${projectId}/deployments`,
+  );
+
 export const subscribeToLogs = (
   deploymentId: string,
   onMessage: (msg: string) => void,

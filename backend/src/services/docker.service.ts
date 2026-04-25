@@ -60,6 +60,34 @@ export class DockerService {
       url: projectUrl,
     });
   }
+
+  /**
+   * Stop and remove a container. Safe to call when the container is already
+   * stopped, missing, or in any other terminal state — we swallow the
+   * 304/404 cases that docker returns for those.
+   */
+  async stopAndRemoveContainer(containerId: string) {
+    const container = docker.getContainer(containerId);
+
+    try {
+      await container.stop({ t: 5 });
+    } catch (err: any) {
+      if (err?.statusCode !== 304 && err?.statusCode !== 404) {
+        console.error("[Docker] Failed to stop container:", err?.message ?? err);
+      }
+    }
+
+    try {
+      await container.remove({ force: true });
+    } catch (err: any) {
+      if (err?.statusCode !== 404) {
+        console.error(
+          "[Docker] Failed to remove container:",
+          err?.message ?? err,
+        );
+      }
+    }
+  }
 }
 
 const dockerService = new DockerService();

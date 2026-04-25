@@ -53,6 +53,7 @@ export default async function fetchClient<T>(
   /**
    * handle non 2xx response
    */
+  console.log(response.ok);
   if (!response.ok) {
     let errorData;
     try {

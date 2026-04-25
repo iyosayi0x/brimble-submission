@@ -47,6 +47,18 @@ class ProjectService {
   }
 
   /**
+   * find a project by id
+   */
+  async getProjectById(
+    id: string,
+    tx: TransactionClient = db,
+  ): Promise<Project | undefined> {
+    return await tx.query.projects.findFirst({
+      where: eq(projects.id, id),
+    });
+  }
+
+  /**
    * cursor paginated projects
    * @param cursor
    * @returns PaginatedData<projects[]>

@@ -32,7 +32,7 @@ export const deployments = pgTable(
       .references(() => projects.id, { onDelete: "cascade" }),
     versionNumber: integer("version_number").notNull(),
     status: varchar("status", { length: 50 })
-      .$type<"PENDING" | "BUILDING" | "RUNNING" | "FAILED">()
+      .$type<"PENDING" | "BUILDING" | "RUNNING" | "FAILED" | "STOPPED">()
       .default("PENDING"),
     imageTag: varchar("image_tag", { length: 255 }),
     containerId: varchar("container_id", { length: 255 }),

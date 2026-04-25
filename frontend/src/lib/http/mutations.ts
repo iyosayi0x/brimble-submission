@@ -5,3 +5,15 @@ export const deployProject = (gitUrl: string) =>
     method: "POST",
     data: { gitUrl },
   });
+
+export const deleteDeployment = (deploymentId: string) =>
+  fetchClient<BaseAPIResponse<{ id: string }>>(
+    `/build/deployments/${deploymentId}`,
+    { method: "DELETE" },
+  );
+
+export const rollbackDeployment = (deploymentId: string) =>
+  fetchClient<BaseAPIResponse<{ id: string; versionNumber: number }>>(
+    `/build/deployments/${deploymentId}/rollback`,
+    { method: "POST" },
+  );

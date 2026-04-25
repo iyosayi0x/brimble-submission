@@ -67,7 +67,9 @@ const lineColor = (line: string): string => {
     </div>
 
     <!-- Terminal body -->
-    <div class="h-52 overflow-y-auto bg-black p-3 space-y-0.5 scroll-smooth">
+    <div
+      class="overflow-y-auto bg-black p-3 space-y-0.5 scroll-smooth h-[40vh]"
+    >
       <p
         v-if="logs.length === 0"
         class="font-mono text-xs text-[#3f3f46] italic"
@@ -79,7 +81,7 @@ const lineColor = (line: string): string => {
         :key="i"
         :class="['font-mono text-xs leading-5', lineColor(line)]"
       >
-        <span class="text-border-strong select-none mr-2">›</span>{{ line }}
+        <span class="text-border-strong select-none mr-2">></span>{{ line }}
       </div>
     </div>
   </div>

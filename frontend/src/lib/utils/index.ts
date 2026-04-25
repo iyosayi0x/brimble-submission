@@ -1,5 +1,6 @@
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import { FetchError } from "../http";
 
 dayjs.extend(relativeTime);
 
@@ -26,4 +27,13 @@ export const truncateUrl = (url: string) => {
   } catch {
     return url;
   }
+};
+
+export const extractErrorMessage = (err: unknown) => {
+  if (err instanceof Error) {
+    return err.message;
+  } else if (err instanceof FetchError) {
+    return err.message;
+  }
+  return `${err}`;
 };

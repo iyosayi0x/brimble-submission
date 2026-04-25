@@ -1,6 +1,7 @@
 import { createApp } from "vue";
 import { RouterProvider, createRouter } from "@tanstack/vue-router";
 import { VueQueryPlugin } from "@tanstack/vue-query";
+import "vue3-toastify/dist/index.css";
 import { routeTree } from "./routeTree.gen";
 import "./style.css";
 

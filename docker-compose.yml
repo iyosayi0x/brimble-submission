@@ -9,9 +9,21 @@ services:
       - ./backend:/app/
       - /app/node_modules
     env_file: .env
+    environment:
+      BUILDKIT_HOST: docker-container://buildkit
     depends_on:
       db:
         condition: service_healthy
+      buildkit:
+        condition: service_started
+    networks:
+      - brimble-net
+    restart: unless-stopped
+
+  buildkit:
+    image: moby/buildkit:latest
+    container_name: buildkit
+    privileged: true
     networks:
       - brimble-net
     restart: unless-stopped
@@ -23,7 +35,8 @@ services:
       target: ${ENVIRONMENT:-runner}
     env_file: .env
     volumes:
-      - /frontend/node_modules
+      - ./frontend:/app/
+      - /app/node_modules
     networks:
       - brimble-net
     restart: unless-stopped

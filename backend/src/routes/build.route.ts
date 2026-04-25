@@ -8,5 +8,16 @@ buildRouter.post("/deploy", (req, res, next) =>
 );
 
 buildRouter.get("/projects", buildController.listProjects);
+buildRouter.get(
+  "/projects/:id/deployments",
+  buildController.listDeploymentVersions,
+);
+
+buildRouter.delete("/deployments/:id", (req, res, next) =>
+  buildController.deleteDeployment(req, res, next),
+);
+buildRouter.post("/deployments/:id/rollback", (req, res, next) =>
+  buildController.rollback(req, res, next),
+);
 
 export default buildRouter;

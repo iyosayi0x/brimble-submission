@@ -10,6 +10,7 @@ import projectService from "./project.service";
 import deploymentService from "./deployment.service";
 import { buildQueue } from "@/utils/build.queue";
 import dockerService from "./docker.service";
+import { ProxyService } from "./proxy.service";
 
 export class BuildService {
   private static STORAGE_PATH = "/tmp/brimble-builds";
@@ -88,6 +89,92 @@ export class BuildService {
     return result.deployment;
   }
 
+  /**
+   * Tear down a single deployment: stop+remove its container, drop the DB
+   * row, and re-route the proxy if the deleted deployment was the active
+   * one.
+   */
+  async deleteDeployment(deploymentId: string) {
+    const deployment = await deploymentService.getDeploymentById(deploymentId);
+    if (!deployment) {
+      throw new CustomError("Deployment not found", 404);
+    }
+
+    const project = await projectService.getProjectById(deployment.projectId);
+    if (!project) {
+      throw new CustomError("Project not found", 404);
+    }
+
+    /**
+     * snapshot whether this deployment was serving traffic before we touch
+     * anything — once we delete the row, the "latest running" lookup will
+     * naturally return the next candidate.
+     */
+    const latest = await deploymentService.getLatestRunning(project.id);
+    const wasActive = latest?.id === deployment.id;
+
+    if (deployment.containerId) {
+      await dockerService.stopAndRemoveContainer(deployment.containerId);
+    }
+
+    await deploymentService.deleteDeploymentRow(deploymentId);
+
+    if (wasActive) {
+      const next = await deploymentService.getLatestRunning(project.id);
+      if (next?.internalIp) {
+        await ProxyService.registerRoute(project.slug, next.internalIp);
+      } else {
+        await ProxyService.deregisterRoute(project.slug);
+      }
+    }
+
+    return { id: deploymentId };
+  }
+
+  /**
+   * Re-point the proxy at an older RUNNING deployment and stop any newer
+   * containers so the active deployment becomes the rollback target.
+   */
+  async rollback(deploymentId: string) {
+    const target = await deploymentService.getDeploymentById(deploymentId);
+    if (!target) {
+      throw new CustomError("Deployment not found", 404);
+    }
+    if (target.status !== "RUNNING") {
+      throw new CustomError(
+        "Can only rollback to a running deployment",
+        400,
+      );
+    }
+    if (!target.internalIp) {
+      throw new CustomError(
+        "Target deployment has no routable address",
+        400,
+      );
+    }
+
+    const project = await projectService.getProjectById(target.projectId);
+    if (!project) {
+      throw new CustomError("Project not found", 404);
+    }
+
+    const newer = await deploymentService.listNewerRunning(
+      target.projectId,
+      target.versionNumber,
+    );
+
+    for (const dep of newer) {
+      if (dep.containerId) {
+        await dockerService.stopAndRemoveContainer(dep.containerId);
+      }
+      await deploymentService.updateDeployment(dep.id, { status: "STOPPED" });
+    }
+
+    await ProxyService.registerRoute(project.slug, target.internalIp);
+
+    return { id: target.id, versionNumber: target.versionNumber };
+  }
+
   private async startBuildProcess(
     deploymentId: string,
     gitUrl: string,
@@ -148,13 +235,17 @@ export class BuildService {
       );
 
       return new Promise((resolve, reject) => {
-        // Run railpack build [path] -t [tag]
-        const builder = spawn("railpack", ["build", repoPath, "-t", imageTag], {
-          env: {
-            ...process.env,
-            PATH: `/root/.local/bin:${process.env.PATH}`,
+        // Run railpack build [path] --name [tag]
+        const builder = spawn(
+          "railpack",
+          ["build", repoPath, "--name", imageTag],
+          {
+            env: {
+              ...process.env,
+              PATH: `/root/.local/bin:${process.env.PATH}`,
+            },
           },
-        });
+        );
 
         builder.stdout.on("data", (data) => {
           // Stream logs directly to the EventEmitter for SSE

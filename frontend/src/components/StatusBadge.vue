@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import { Icon } from "@iconify/vue";
 
-type Status = "RUNNING" | "BUILDING" | "FAILED" | "IDLE";
+type Status = "RUNNING" | "BUILDING" | "FAILED" | "PENDING" | "IDLE";
 
 const props = defineProps<{ status: Status }>();
 
@@ -22,6 +22,11 @@ const config = computed(() => {
       label: "Failed",
       cls: "text-[#ef4444] bg-[#1c0505] border border-[#7f1d1d]",
       icon: "mdi:close-circle",
+    },
+    PENDING: {
+      label: "Pending",
+      cls: "text-[#a3a3a3] bg-[#0a0a0a] border border-[#404040]",
+      icon: "mdi:clock-outline",
     },
     IDLE: {
       label: "Idle",
