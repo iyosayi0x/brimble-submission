@@ -6,10 +6,7 @@ import { toast } from "vue3-toastify";
 
 import StatusBadge from "./StatusBadge.vue";
 import { fetchDeploymentVersions } from "../lib/http/query";
-import {
-  deleteDeployment,
-  rollbackDeployment,
-} from "../lib/http/mutations";
+import { deleteDeployment, rollbackDeployment } from "../lib/http/mutations";
 import {
   timeAgo,
   projectColor,
@@ -21,11 +18,6 @@ const props = defineProps<{ project: Project }>();
 const emit = defineEmits<{ close: [] }>();
 
 const queryClient = useQueryClient();
-
-/**
- * tracks the deployment currently being acted on so we can show inline
- * spinners and disable controls per-row instead of across the whole table
- */
 const pendingDeploymentId = ref<string | null>(null);
 
 /**

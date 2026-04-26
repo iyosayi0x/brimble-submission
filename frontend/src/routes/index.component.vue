@@ -45,6 +45,19 @@ const { data: projectsResponse, isLoading } = useQuery({
  */
 const projects = computed(() => projectsResponse.value?.data?.items ?? []);
 
+const GIT_URL_REGEX = /^(https?|git|ssh|rsync):\/\/\S+\.git$/i;
+const trimmedGitUrl = computed(() => gitUrl.value.trim());
+const gitUrlError = computed(() => {
+  if (!trimmedGitUrl.value) return null;
+  if (!GIT_URL_REGEX.test(trimmedGitUrl.value)) {
+    return "Enter a valid Git URL (e.g. https://github.com/org/repo.git)";
+  }
+  return null;
+});
+const canDeploy = computed(
+  () => !!trimmedGitUrl.value && !gitUrlError.value && !isDeploying.value,
+);
+
 /**
  * mutation
  */
@@ -59,13 +72,13 @@ const { mutate: deploy, isPending: isDeploying } = useMutation({
   },
   onSuccess: (res) => {
     const deploymentId = res.data.id;
+    queryClient.invalidateQueries({ queryKey: ["projects"] });
     stopLogs = subscribeToLogs(
       deploymentId,
       (msg) => buildLogs.value.push(msg),
       () => {
         buildStatus.value = "Complete";
         isBuilding.value = false;
-        queryClient.invalidateQueries({ queryKey: ["projects"] });
       },
     );
   },
@@ -81,8 +94,8 @@ const { mutate: deploy, isPending: isDeploying } = useMutation({
  */
 let stopLogs: (() => void) | null = null;
 const handleDeploy = () => {
-  if (!gitUrl.value.trim() || isDeploying.value) return;
-  deploy(gitUrl.value);
+  if (!canDeploy.value) return;
+  deploy(trimmedGitUrl.value);
 };
 const handleShowProject = (project: Project) => {
   selectedProject.value = project;
@@ -140,32 +153,49 @@ onUnmounted(() => stopLogs?.());
         </h2>
       </div>
 
-      <form class="flex gap-2" @submit.prevent="handleDeploy">
-        <div class="flex-1 relative">
-          <Icon
-            icon="mdi:git"
-            class="absolute left-2.5 top-1/2 -translate-y-1/2 text-subtle"
-            :width="14"
-          />
-          <input
-            v-model="gitUrl"
-            type="url"
-            placeholder="https://github.com/your-org/your-repo"
-            class="w-full bg-base border border-border rounded pl-8 pr-3 py-2 text-sm font-mono text-primary placeholder-[#3f3f46] focus:outline-none focus:border-accent transition-colors"
-          />
+      <form class="flex flex-col gap-1.5" @submit.prevent="handleDeploy">
+        <div class="flex gap-2">
+          <div class="flex-1 relative">
+            <Icon
+              icon="mdi:git"
+              class="absolute left-2.5 top-1/2 -translate-y-1/2 text-subtle"
+              :width="14"
+            />
+            <input
+              v-model="gitUrl"
+              type="url"
+              placeholder="https://github.com/your-org/your-repo.git"
+              :class="[
+                'w-full bg-base border rounded pl-8 pr-3 py-2 text-sm font-mono text-primary placeholder-[#3f3f46] focus:outline-none transition-colors',
+                gitUrlError
+                  ? 'border-danger focus:border-danger'
+                  : 'border-border focus:border-accent',
+              ]"
+              :aria-invalid="!!gitUrlError"
+              aria-describedby="git-url-error"
+            />
+          </div>
+          <button
+            type="submit"
+            :disabled="!canDeploy"
+            class="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded transition-colors shadow-brutal-accent cursor-pointer"
+          >
+            <Icon
+              :icon="isDeploying ? 'mdi:loading' : 'mdi:rocket-launch'"
+              :width="14"
+              :class="{ 'animate-spin': isDeploying }"
+            />
+            {{ isDeploying ? "Deploying…" : "Deploy" }}
+          </button>
         </div>
-        <button
-          type="submit"
-          :disabled="isDeploying || !gitUrl.trim()"
-          class="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded transition-colors shadow-brutal-accent cursor-pointer"
+        <p
+          v-if="gitUrlError"
+          id="git-url-error"
+          class="flex items-center gap-1 text-[11px] text-danger font-mono"
         >
-          <Icon
-            :icon="isDeploying ? 'mdi:loading' : 'mdi:rocket-launch'"
-            :width="14"
-            :class="{ 'animate-spin': isDeploying }"
-          />
-          {{ isDeploying ? "Deploying…" : "Deploy" }}
-        </button>
+          <Icon icon="mdi:alert-circle-outline" :width="12" />
+          {{ gitUrlError }}
+        </p>
       </form>
     </section>
 
@@ -329,7 +359,7 @@ onUnmounted(() => stopLogs?.());
       </div>
 
       <span class="text-[10px] text-subtle font-mono">
-        Brimble Mini © 2025
+        Brimble Mini © {{ new Date().getFullYear() }}
       </span>
     </div>
   </footer>

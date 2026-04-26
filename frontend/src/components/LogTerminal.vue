@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { nextTick, ref, watch } from "vue";
 import { Icon } from "@iconify/vue";
 
 const props = defineProps<{
@@ -9,6 +9,17 @@ const props = defineProps<{
 }>();
 
 const copied = ref(false);
+const terminalBody = ref<HTMLDivElement | null>(null);
+
+watch(
+  () => props.logs.length,
+  async () => {
+    await nextTick();
+    const el = terminalBody.value;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  },
+);
 
 const copyLogs = async () => {
   await navigator.clipboard.writeText(props.logs.join("\n"));
@@ -68,6 +79,7 @@ const lineColor = (line: string): string => {
 
     <!-- Terminal body -->
     <div
+      ref="terminalBody"
       class="overflow-y-auto bg-black p-3 space-y-0.5 scroll-smooth h-[40vh]"
     >
       <p
