@@ -8,12 +8,24 @@ import deploymentService from "@/services/deployment.service";
 class BuildController {
   async deploy(req: Request, res: Response, next: NextFunction) {
     try {
-      const gitUrl = await yup
-        .string()
-        .url("invalid git url")
-        .required("git url is required")
-        .validate(req.body.gitUrl);
-      const deployment = await buildService.deploy(gitUrl);
+      const { gitUrl, port } = await yup
+        .object({
+          gitUrl: yup
+            .string()
+            .url("invalid git url")
+            .required("git url is required"),
+          port: yup
+            .number()
+            .transform((value, original) =>
+              original === "" || original == null ? undefined : value,
+            )
+            .integer("port must be an integer")
+            .min(1, "port must be between 1 and 65535")
+            .max(65535, "port must be between 1 and 65535")
+            .optional(),
+        })
+        .validate({ gitUrl: req.body.gitUrl, port: req.body.port });
+      const deployment = await buildService.deploy(gitUrl, port);
       return res.status(201).json(response("Deployment queued", deployment));
     } catch (error) {
       next(error);

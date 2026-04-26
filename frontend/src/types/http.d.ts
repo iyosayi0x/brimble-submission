@@ -18,6 +18,7 @@ type Project = {
   slug: string;
   gitUrl: string;
   createdAt: string;
+  port: number;
 };
 
 type Deployment = {

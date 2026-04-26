@@ -57,15 +57,11 @@ const startLogStream = (deployment: Deployment) => {
   logsDeployment.value = deployment;
   logStatus.value = "Streaming";
   isStreamingLogs.value = true;
-  closeLogStream = subscribeToLogs(
-    deployment.id,
-    appendLogChunk,
-    () => {
-      logStatus.value = "Disconnected";
-      isStreamingLogs.value = false;
-      closeLogStream = null;
-    },
-  );
+  closeLogStream = subscribeToLogs(deployment.id, appendLogChunk, () => {
+    logStatus.value = "Disconnected";
+    isStreamingLogs.value = false;
+    closeLogStream = null;
+  });
 };
 
 /**

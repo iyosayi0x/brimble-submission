@@ -28,9 +28,11 @@ export class BuildService {
   /**
    *  Orchestrates the entire deployment lifecycle using a DB Transaction
    * @param gitUrl
+   * @param port optional service port — only honored on first project
+   *             creation; later re-deploys reuse the project's stored port
    * @returns
    */
-  async deploy(gitUrl: string) {
+  async deploy(gitUrl: string, port?: number) {
     if (!this.ensureIsValidRepositoryUrl(gitUrl)) {
       throw new CustomError("Invalid Git Repository URL", 400);
     }
@@ -42,7 +44,11 @@ export class BuildService {
       /**
        * 1. find or create project
        */
-      const project = await projectService.findOrCreateProject(gitUrl, tx);
+      const project = await projectService.findOrCreateProject(
+        gitUrl,
+        tx,
+        port,
+      );
 
       /**
        * determine version number
@@ -83,6 +89,7 @@ export class BuildService {
         result.gitUrl,
         result.imageTag,
         result.project.slug,
+        result.project.port,
       );
     });
 
@@ -123,7 +130,11 @@ export class BuildService {
     if (wasActive) {
       const next = await deploymentService.getLatestRunning(project.id);
       if (next?.internalIp) {
-        await ProxyService.registerRoute(project.slug, next.internalIp);
+        await ProxyService.registerRoute(
+          project.slug,
+          next.internalIp,
+          project.port,
+        );
       } else {
         await ProxyService.deregisterRoute(project.slug);
       }
@@ -143,8 +154,7 @@ export class BuildService {
       throw new CustomError("Project not found", 404);
     }
 
-    const projectDeployments =
-      await deploymentService.listByProject(projectId);
+    const projectDeployments = await deploymentService.listByProject(projectId);
 
     /**
      * stop & remove any containers we still have a handle to
@@ -217,7 +227,11 @@ export class BuildService {
       await deploymentService.updateDeployment(dep.id, { status: "STOPPED" });
     }
 
-    await ProxyService.registerRoute(project.slug, target.internalIp);
+    await ProxyService.registerRoute(
+      project.slug,
+      target.internalIp,
+      project.port,
+    );
 
     return { id: target.id, versionNumber: target.versionNumber };
   }
@@ -227,6 +241,7 @@ export class BuildService {
     gitUrl: string,
     imageTag: string,
     projectSlug: string,
+    port: number,
   ) {
     try {
       /**
@@ -241,12 +256,14 @@ export class BuildService {
        */
       await this.execute(deploymentId, gitUrl, imageTag);
 
-      logEmitter.emitLog(
-        deploymentId,
-        "--- Step 3: Launching Container ---\n",
-      );
+      logEmitter.emitLog(deploymentId, "--- Step 3: Launching Container ---\n");
 
-      await dockerService.runContainer(deploymentId, imageTag, projectSlug);
+      await dockerService.runContainer(
+        deploymentId,
+        imageTag,
+        projectSlug,
+        port,
+      );
     } catch (error) {
       console.error(`[Build Error] Deployment ${deploymentId}:`, error);
       await deploymentService.updateDeployment(deploymentId, {
@@ -262,10 +279,7 @@ export class BuildService {
       /**
        * 1. pull the code
        */
-      logEmitter.emitLog(
-        deploymentId,
-        "--- Step 1: Cloning Repository ---\n",
-      );
+      logEmitter.emitLog(deploymentId, "--- Step 1: Cloning Repository ---\n");
       await fs.mkdir(repoPath, { recursive: true });
       await simpleGit().clone(gitUrl, repoPath);
       logEmitter.emitLog(deploymentId, "Successfully cloned repository.\n");

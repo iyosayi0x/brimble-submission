@@ -18,6 +18,7 @@ export const projects = pgTable("projects", {
   slug: varchar("slug").unique().notNull(),
   gitUrl: text("git_url").notNull().unique(),
   createdAt: timestamp("created_at").defaultNow(),
+  port: integer("port").notNull().default(3000),
 });
 
 /**

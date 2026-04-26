@@ -21,11 +21,15 @@ class ProjectService {
    * find or create a project
    * @param gitUrl
    * @param tx
+   * @param port  service port the deployed container listens on; only
+   *              applied when the project is first created — re-deploys
+   *              against an existing project preserve its original port
    * @returns project
    */
   async findOrCreateProject(
     gitUrl: string,
     tx: TransactionClient = db,
+    port?: number,
   ): Promise<Project> {
     let project = await tx.query.projects.findFirst({
       where: eq(projects.gitUrl, gitUrl),
@@ -39,6 +43,7 @@ class ProjectService {
           name: gitUrl.split("/").pop()?.replace(".git", "") || "New Project",
           slug,
           gitUrl,
+          ...(port !== undefined ? { port } : {}),
         })
         .returning();
       project = newProject;

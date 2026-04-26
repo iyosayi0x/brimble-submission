@@ -21,6 +21,7 @@ import ProjectModal from "../components/ProjectModal.vue";
  * refs
  */
 const gitUrl = ref("");
+const port = ref("");
 const buildLogs = ref<string[]>([]);
 const buildStatus = ref("Idle");
 const isBuilding = ref(false);
@@ -47,6 +48,7 @@ const projects = computed(() => projectsResponse.value?.data?.items ?? []);
 
 const GIT_URL_REGEX = /^(https?|git|ssh|rsync):\/\/\S+\.git$/i;
 const trimmedGitUrl = computed(() => gitUrl.value.trim());
+const trimmedPort = computed(() => port.value.trim());
 const gitUrlError = computed(() => {
   if (!trimmedGitUrl.value) return null;
   if (!GIT_URL_REGEX.test(trimmedGitUrl.value)) {
@@ -54,15 +56,33 @@ const gitUrlError = computed(() => {
   }
   return null;
 });
+const parsedPort = computed(() => {
+  if (!trimmedPort.value) return null;
+  if (!/^\d+$/.test(trimmedPort.value)) return NaN;
+  return Number(trimmedPort.value);
+});
+const portError = computed(() => {
+  const value = parsedPort.value;
+  if (value === null) return null;
+  if (Number.isNaN(value) || value < 1 || value > 65535) {
+    return "Port must be a number between 1 and 65535";
+  }
+  return null;
+});
 const canDeploy = computed(
-  () => !!trimmedGitUrl.value && !gitUrlError.value && !isDeploying.value,
+  () =>
+    !!trimmedGitUrl.value &&
+    !gitUrlError.value &&
+    !portError.value &&
+    !isDeploying.value,
 );
 
 /**
  * mutation
  */
 const { mutate: deploy, isPending: isDeploying } = useMutation({
-  mutationFn: (url: string) => deployProject(url),
+  mutationFn: ({ url, port }: { url: string; port?: number }) =>
+    deployProject(url, port),
   onMutate: () => {
     buildLogs.value = [];
     buildStatus.value = "Building...";
@@ -95,7 +115,12 @@ const { mutate: deploy, isPending: isDeploying } = useMutation({
 let stopLogs: (() => void) | null = null;
 const handleDeploy = () => {
   if (!canDeploy.value) return;
-  deploy(trimmedGitUrl.value);
+  const portValue = parsedPort.value;
+  deploy({
+    url: trimmedGitUrl.value,
+    port:
+      portValue !== null && !Number.isNaN(portValue) ? portValue : undefined,
+  });
 };
 const handleShowProject = (project: Project) => {
   selectedProject.value = project;
@@ -175,6 +200,28 @@ onUnmounted(() => stopLogs?.());
               aria-describedby="git-url-error"
             />
           </div>
+          <div class="relative w-28">
+            <Icon
+              icon="mdi:lan-connect"
+              class="absolute left-2.5 top-1/2 -translate-y-1/2 text-subtle"
+              :width="14"
+            />
+            <input
+              v-model="port"
+              type="text"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              placeholder="3000"
+              :class="[
+                'w-full bg-base border rounded pl-8 pr-3 py-2 text-sm font-mono text-primary placeholder-[#3f3f46] focus:outline-none transition-colors',
+                portError
+                  ? 'border-danger focus:border-danger'
+                  : 'border-border focus:border-accent',
+              ]"
+              :aria-invalid="!!portError"
+              aria-describedby="port-error"
+            />
+          </div>
           <button
             type="submit"
             :disabled="!canDeploy"
@@ -195,6 +242,14 @@ onUnmounted(() => stopLogs?.());
         >
           <Icon icon="mdi:alert-circle-outline" :width="12" />
           {{ gitUrlError }}
+        </p>
+        <p
+          v-if="portError"
+          id="port-error"
+          class="flex items-center gap-1 text-[11px] text-danger font-mono"
+        >
+          <Icon icon="mdi:alert-circle-outline" :width="12" />
+          {{ portError }}
         </p>
       </form>
     </section>

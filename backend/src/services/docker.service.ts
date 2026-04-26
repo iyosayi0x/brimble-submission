@@ -12,6 +12,7 @@ export class DockerService {
     deploymentId: string,
     imageTag: string,
     projectSlug: string,
+    port: number,
   ) {
     /**
      * 1. create the container
@@ -45,7 +46,7 @@ export class DockerService {
       deploymentId,
       "--- Step 4: Configuring Network Routing ---\n",
     );
-    await ProxyService.registerRoute(projectSlug, internalIp);
+    await ProxyService.registerRoute(projectSlug, internalIp, port);
 
     logEmitter.emitLog(deploymentId, `✨ Deployment Live: ${projectUrl}`);
 

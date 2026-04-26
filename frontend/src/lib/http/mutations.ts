@@ -1,9 +1,9 @@
 import fetchClient from "./index";
 
-export const deployProject = (gitUrl: string) =>
+export const deployProject = (gitUrl: string, port?: number) =>
   fetchClient<BaseAPIResponse<Deployment>>("/build/deploy", {
     method: "POST",
-    data: { gitUrl },
+    data: { gitUrl, ...(port !== undefined ? { port } : {}) },
   });
 
 export const deleteProject = (projectId: string) =>
