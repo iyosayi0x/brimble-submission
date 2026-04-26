@@ -132,6 +132,54 @@ export class BuildService {
   }
 
   /**
+   * Tear down an entire project: stop+remove every container, drop built
+   * images, deregister the proxy route, then delete the row (deployments
+   * cascade via FK).
+   */
+  async deleteProject(projectId: string) {
+    const project = await projectService.getProjectById(projectId);
+    if (!project) {
+      throw new CustomError("Project not found", 404);
+    }
+
+    const projectDeployments =
+      await deploymentService.listByProject(projectId);
+
+    /**
+     * stop & remove any containers we still have a handle to
+     */
+    await Promise.all(
+      projectDeployments
+        .filter((d) => d.containerId)
+        .map((d) => dockerService.stopAndRemoveContainer(d.containerId!)),
+    );
+
+    /**
+     * drop built images so we don't leak disk per project
+     */
+    const imageTags = Array.from(
+      new Set(
+        projectDeployments
+          .map((d) => d.imageTag)
+          .filter((tag): tag is string => Boolean(tag)),
+      ),
+    );
+    await Promise.all(imageTags.map((tag) => dockerService.removeImage(tag)));
+
+    /**
+     * tear down the public route before the project disappears
+     */
+    await ProxyService.deregisterRoute(project.slug);
+
+    /**
+     * deployments cascade via FK
+     */
+    await projectService.deleteProjectRow(projectId);
+
+    return { id: projectId };
+  }
+
+  /**
    * Re-point the proxy at an older RUNNING deployment and stop any newer
    * containers so the active deployment becomes the rollback target.
    */

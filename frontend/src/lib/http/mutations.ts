@@ -6,6 +6,11 @@ export const deployProject = (gitUrl: string) =>
     data: { gitUrl },
   });
 
+export const deleteProject = (projectId: string) =>
+  fetchClient<BaseAPIResponse<{ id: string }>>(`/build/projects/${projectId}`, {
+    method: "DELETE",
+  });
+
 export const deleteDeployment = (deploymentId: string) =>
   fetchClient<BaseAPIResponse<{ id: string }>>(
     `/build/deployments/${deploymentId}`,

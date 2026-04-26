@@ -13,6 +13,9 @@ buildRouter.get(
   buildController.listDeploymentVersions,
 );
 
+buildRouter.delete("/projects/:id", (req, res, next) =>
+  buildController.deleteProject(req, res, next),
+);
 buildRouter.delete("/deployments/:id", (req, res, next) =>
   buildController.deleteDeployment(req, res, next),
 );

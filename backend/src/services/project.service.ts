@@ -72,6 +72,13 @@ class ProjectService {
   }
 
   /**
+   * delete a project row — child deployments cascade via FK
+   */
+  async deleteProjectRow(projectId: string, tx: TransactionClient = db) {
+    await tx.delete(projects).where(eq(projects.id, projectId));
+  }
+
+  /**
    * stop all running deployments
    * @param slug
    */

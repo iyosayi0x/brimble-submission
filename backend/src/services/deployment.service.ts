@@ -115,6 +115,18 @@ class DeploymentService {
   }
 
   /**
+   * all deployments for a project — used during project teardown
+   */
+  async listByProject(
+    projectId: string,
+    tx: TransactionClient = db,
+  ): Promise<Deployment[]> {
+    return await tx.query.deployments.findMany({
+      where: eq(deployments.projectId, projectId),
+    });
+  }
+
+  /**
    * paginated return deployments
    * @param projectId
    * @param cursor

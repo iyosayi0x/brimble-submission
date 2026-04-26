@@ -56,6 +56,20 @@ class BuildController {
     }
   }
 
+  async deleteProject(req: Request, res: Response, next: NextFunction) {
+    try {
+      const projectId = await yup
+        .string()
+        .required("Project id is required")
+        .uuid("Invalid project id")
+        .validate(req.params.id);
+      const result = await buildService.deleteProject(projectId);
+      return res.status(200).json(response("Project deleted", result));
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async rollback(req: Request, res: Response, next: NextFunction) {
     try {
       const deploymentId = await yup

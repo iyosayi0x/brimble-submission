@@ -72,6 +72,21 @@ export class DockerService {
   }
 
   /**
+   * Remove a built image. Safe to call when the image is already gone or
+   * still referenced by another container — we swallow the 404/409 cases.
+   */
+  async removeImage(imageTag: string) {
+    const image = docker.getImage(imageTag);
+    try {
+      await image.remove({ force: true });
+    } catch (err: any) {
+      if (err?.statusCode !== 404 && err?.statusCode !== 409) {
+        console.error("[Docker] Failed to remove image:", err?.message ?? err);
+      }
+    }
+  }
+
+  /**
    * Stop and remove a container. Safe to call when the container is already
    * stopped, missing, or in any other terminal state — we swallow the
    * 304/404 cases that docker returns for those.

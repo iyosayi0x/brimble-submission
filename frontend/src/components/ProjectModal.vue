@@ -6,7 +6,11 @@ import { toast } from "vue3-toastify";
 
 import StatusBadge from "./StatusBadge.vue";
 import { fetchDeploymentVersions } from "../lib/http/query";
-import { deleteDeployment, rollbackDeployment } from "../lib/http/mutations";
+import {
+  deleteDeployment,
+  deleteProject,
+  rollbackDeployment,
+} from "../lib/http/mutations";
 import {
   timeAgo,
   projectColor,
@@ -75,6 +79,17 @@ const { mutate: deleteMutation } = useMutation({
   },
 });
 
+const { mutate: deleteProjectMutation, isPending: isDeletePending } =
+  useMutation({
+    mutationFn: (projectId: string) => deleteProject(projectId),
+    onSuccess: () => {
+      toast.success("Project deleted");
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      emit("close");
+    },
+    onError: (err) => toast.error(extractErrorMessage(err)),
+  });
+
 /**
  * methods
  */
@@ -96,6 +111,13 @@ const handleRollback = (deployment: Deployment) => {
   if (!canRollback(deployment)) return;
   pendingDeploymentId.value = deployment.id;
   rollbackMutation(deployment.id);
+};
+
+const handleDeleteProject = () => {
+  if (isDeletePending.value) return;
+  const message = `Delete project "${props.project.name}"? This stops every deployment, removes built images, and tears down the public route.`;
+  if (!window.confirm(message)) return;
+  deleteProjectMutation(props.project.id);
 };
 
 const handleDeleteDeployment = (deployment: Deployment) => {
@@ -122,7 +144,7 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
 <template>
   <Teleport to="body">
     <div
-      class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      class="fixed inset-0 z-100 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       @click.self="emit('close')"
     >
       <div
@@ -153,13 +175,28 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
             </div>
           </div>
 
-          <button
-            class="flex items-center justify-center w-7 h-7 rounded text-muted hover:text-primary hover:bg-elevated transition-colors cursor-pointer"
-            aria-label="Close"
-            @click="emit('close')"
-          >
-            <Icon icon="mdi:close" :width="16" />
-          </button>
+          <div class="flex flex-row items-center">
+            <button
+              class="flex items-center justify-center w-7 h-7 rounded text-muted hover:text-primary hover:bg-elevated transition-colors cursor-pointer"
+              aria-label="Close"
+              @click="emit('close')"
+            >
+              <Icon icon="mdi:close" :width="16" />
+            </button>
+
+            <button
+              :disabled="isDeletePending"
+              class="w-full text-left px-3 py-1.5 text-[11px] font-medium flex items-center gap-2 text-danger hover:bg-danger/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors cursor-pointer"
+              @click="handleDeleteProject"
+            >
+              <Icon
+                :icon="isDeletePending ? 'mdi:loading' : 'mdi:delete-outline'"
+                :width="13"
+                :class="{ 'animate-spin': isDeletePending }"
+              />
+              Delete Project
+            </button>
+          </div>
         </div>
 
         <!-- Sub-header -->

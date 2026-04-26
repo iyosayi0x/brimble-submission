@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import { Icon } from "@iconify/vue";
 
-type Status = "RUNNING" | "BUILDING" | "FAILED" | "PENDING" | "IDLE";
+type Status = "RUNNING" | "BUILDING" | "FAILED" | "PENDING" | "STOPPED";
 
 const props = defineProps<{ status: Status }>();
 
@@ -28,10 +28,10 @@ const config = computed(() => {
       cls: "text-[#a3a3a3] bg-[#0a0a0a] border border-[#404040]",
       icon: "mdi:clock-outline",
     },
-    IDLE: {
-      label: "Idle",
+    STOPPED: {
+      label: "Stopped",
       cls: "text-muted bg-surface border border-border",
-      icon: "mdi:minus-circle-outline",
+      icon: "mdi:stop-circle-outline",
     },
   };
   return map[props.status];
