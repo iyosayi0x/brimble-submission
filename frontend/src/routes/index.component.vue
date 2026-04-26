@@ -25,7 +25,17 @@ const port = ref("");
 const buildLogs = ref<string[]>([]);
 const buildStatus = ref("Idle");
 const isBuilding = ref(false);
+const buildError = ref<string | null>(null);
 const selectedProject = ref<Project | null>(null);
+
+/**
+ * Backend emits one terminal marker per build. We scan log chunks for it so
+ * the UI doesn't have to trust SSE close as a "success" signal — close just
+ * means the stream ended.
+ */
+const BUILD_FAILED_RE = /^--- Build Failed.*?--- (.+?)\s*$/m;
+const BUILD_SUCCESS_RE = /^--- Build Successful ---/m;
+const CRITICAL_ERROR_RE = /^CRITICAL ERROR: (.+?)\s*$/m;
 
 /**
  * query client
@@ -87,6 +97,7 @@ const { mutate: deploy, isPending: isDeploying } = useMutation({
     buildLogs.value = [];
     buildStatus.value = "Building...";
     isBuilding.value = true;
+    buildError.value = null;
     stopLogs?.();
     stopLogs = null;
   },
@@ -95,15 +106,34 @@ const { mutate: deploy, isPending: isDeploying } = useMutation({
     queryClient.invalidateQueries({ queryKey: ["projects"] });
     stopLogs = subscribeToLogs(
       deploymentId,
-      (msg) => buildLogs.value.push(msg),
+      (msg) => {
+        buildLogs.value.push(msg);
+
+        const failed = msg.match(BUILD_FAILED_RE) ?? msg.match(CRITICAL_ERROR_RE);
+        if (failed) {
+          buildError.value = failed[1];
+          buildStatus.value = "Failed";
+        } else if (BUILD_SUCCESS_RE.test(msg)) {
+          buildStatus.value = "Complete";
+        }
+      },
       () => {
-        buildStatus.value = "Complete";
+        /**
+         * SSE close is just "stream ended" — only flip to Complete if we
+         * never saw a terminal marker. Otherwise trust what the logs said.
+         */
+        if (!buildError.value && buildStatus.value === "Building...") {
+          buildStatus.value = "Complete";
+        }
         isBuilding.value = false;
+        queryClient.invalidateQueries({ queryKey: ["projects"] });
       },
     );
   },
   onError: (error) => {
-    toast.error(extractErrorMessage(error));
+    const message = extractErrorMessage(error);
+    toast.error(message);
+    buildError.value = message;
     buildStatus.value = "Failed";
     isBuilding.value = false;
   },
@@ -253,6 +283,29 @@ onUnmounted(() => stopLogs?.());
         </p>
       </form>
     </section>
+
+    <!-- Build error banner — surfaces the user-actionable hint -->
+    <div
+      v-if="buildError"
+      class="border border-danger rounded bg-surface px-3 py-2 flex items-start gap-2 shadow-brutal"
+      role="alert"
+    >
+      <Icon
+        icon="mdi:alert-circle-outline"
+        class="text-danger shrink-0 mt-0.5"
+        :width="14"
+      />
+      <div class="flex-1 min-w-0">
+        <p
+          class="text-[10px] font-semibold text-danger uppercase tracking-widest mb-0.5"
+        >
+          Build Failed
+        </p>
+        <p class="text-xs text-primary font-mono wrap-break-word">
+          {{ buildError }}
+        </p>
+      </div>
+    </div>
 
     <!-- Live Logs Terminal -->
     <LogTerminal

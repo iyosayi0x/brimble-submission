@@ -12,6 +12,69 @@ import { buildQueue } from "@/utils/build.queue";
 import dockerService from "./docker.service";
 import { ProxyService } from "./proxy.service";
 
+type Builder = "dockerfile" | "railpack";
+
+/**
+ * Maps known build-tool failure signatures to a single user-actionable
+ * sentence. We append one of these after the raw stderr so users have a
+ * clear next step instead of just a wall of buildkit output.
+ */
+const FAILURE_PATTERNS: Array<{
+  builder: Builder | "any";
+  test: RegExp;
+  hint: string;
+}> = [
+  {
+    builder: "railpack",
+    test: /no provider matched|could not detect|unable to determine/i,
+    hint: "Railpack couldn't detect your project type. Add a Dockerfile to the repo root and redeploy.",
+  },
+  {
+    builder: "any",
+    test: /docker[- ]compose.*(not found|missing)|compose: command not found/i,
+    hint: "Build host is missing `docker compose` v2. Contact ops.",
+  },
+  {
+    builder: "any",
+    test: /\bkilled\b.*\b(signal\s*9|sigkill)\b|out of memory|cannot allocate memory|\boom\b/i,
+    hint: "Build ran out of memory. Reduce the build's memory footprint or contact ops to raise the limit.",
+  },
+  {
+    builder: "any",
+    test: /pull access denied|manifest .* not found|unable to find image/i,
+    hint: "Couldn't pull a base image. Check the image reference or registry credentials.",
+  },
+  {
+    builder: "any",
+    test: /temporary failure in name resolution|could not resolve host|i\/o timeout|network is unreachable/i,
+    hint: "Network error reaching a registry or package mirror. Retry the deploy.",
+  },
+  {
+    builder: "dockerfile",
+    test: /failed to compute cache key|not found.*COPY|file does not exist/i,
+    hint: "Dockerfile referenced a path that's not in the repo. Check your COPY/ADD lines.",
+  },
+  {
+    builder: "dockerfile",
+    test: /unknown instruction|dockerfile parse error/i,
+    hint: "Dockerfile has a syntax error.",
+  },
+];
+
+function classifyBuildFailure(
+  builder: Builder,
+  exitCode: number | null,
+  stderrTail: string,
+): string {
+  for (const { builder: scope, test, hint } of FAILURE_PATTERNS) {
+    if (scope !== "any" && scope !== builder) continue;
+    if (test.test(stderrTail)) return hint;
+  }
+  return builder === "dockerfile"
+    ? `Docker build failed (exit ${exitCode ?? "?"}). Check the build output above.`
+    : `Railpack build failed (exit ${exitCode ?? "?"}). Add a Dockerfile if autodetect can't handle this stack.`;
+}
+
 export class BuildService {
   private STORAGE_PATH = "/tmp/brimble-builds";
 
@@ -308,55 +371,97 @@ export class BuildService {
       logEmitter.emitLog(deploymentId, "Successfully cloned repository.\n");
 
       /**
-       * 2. build with railpack
+       * 2. pick a builder. A repo-root Dockerfile is the explicit, reliable
+       * path — go straight to `docker build` for it. Anything else falls
+       * through to railpack's autodetect, which is the fragile path.
        */
+      const builder = await this.detectBuilder(repoPath);
       logEmitter.emitLog(
         deploymentId,
-        "--- Step 2: Railpack Build Starting ---\n",
+        builder === "dockerfile"
+          ? "--- Step 2: Building from Dockerfile ---\n"
+          : "--- Step 2: Building with Railpack (autodetect) ---\n",
       );
 
-      return new Promise((resolve, reject) => {
-        // Run railpack build [path] --name [tag]
-        const builder = spawn(
-          "railpack",
-          ["build", repoPath, "--name", imageTag],
-          {
-            env: {
-              ...process.env,
-              PATH: `/root/.local/bin:${process.env.PATH}`,
-            },
-          },
-        );
-
-        builder.stdout.on("data", (data) => {
-          logEmitter.emitLog(deploymentId, data.toString());
-        });
-
-        builder.stderr.on("data", (data) => {
-          // Railpack often sends progress to stderr, so we capture both
-          logEmitter.emitLog(deploymentId, data.toString());
-        });
-
-        builder.on("close", async (code) => {
-          // Cleanup cloned code after build to save disk space
-          await fs.rm(repoPath, { recursive: true, force: true });
-
-          if (code === 0) {
-            logEmitter.emitLog(deploymentId, "--- Build Successful ---\n");
-            resolve(true);
-          } else {
-            logEmitter.emitLog(
-              deploymentId,
-              `--- Build Failed (Exit Code: ${code}) ---\n`,
-            );
-            reject(new Error(`Railpack exited with code ${code}`));
-          }
-        });
-      });
+      await this.runBuilder(deploymentId, repoPath, imageTag, builder);
+      logEmitter.emitLog(deploymentId, "--- Build Successful ---\n");
     } catch (error: any) {
       logEmitter.emitLog(deploymentId, `CRITICAL ERROR: ${error.message}\n`);
       throw error;
+    } finally {
+      await fs.rm(repoPath, { recursive: true, force: true }).catch(() => {});
     }
+  }
+
+  private async detectBuilder(repoPath: string): Promise<Builder> {
+    try {
+      await fs.access(path.join(repoPath, "Dockerfile"));
+      return "dockerfile";
+    } catch {
+      return "railpack";
+    }
+  }
+
+  private runBuilder(
+    deploymentId: string,
+    repoPath: string,
+    imageTag: string,
+    builder: Builder,
+  ): Promise<void> {
+    const cmd = builder === "dockerfile" ? "docker" : "railpack";
+    const args =
+      builder === "dockerfile"
+        ? ["build", "-t", imageTag, repoPath]
+        : ["build", repoPath, "--name", imageTag];
+
+    return new Promise((resolve, reject) => {
+      const proc = spawn(cmd, args, {
+        env: {
+          ...process.env,
+          PATH: `/root/.local/bin:${process.env.PATH}`,
+        },
+      });
+
+      /**
+       * keep a rolling tail of stderr so we can classify the failure on
+       * close without hoarding the whole build log in memory.
+       */
+      const TAIL_LIMIT = 8000;
+      let stderrTail = "";
+
+      proc.stdout.on("data", (data) => {
+        logEmitter.emitLog(deploymentId, data.toString());
+      });
+
+      proc.stderr.on("data", (data) => {
+        const chunk = data.toString();
+        logEmitter.emitLog(deploymentId, chunk);
+        stderrTail = (stderrTail + chunk).slice(-TAIL_LIMIT);
+      });
+
+      /**
+       * spawn-level error usually means the binary isn't on PATH. Surface
+       * that as a host-config issue rather than a build failure.
+       */
+      proc.on("error", (err: NodeJS.ErrnoException) => {
+        const msg =
+          err.code === "ENOENT"
+            ? `Build host is missing the \`${cmd}\` binary.`
+            : `Failed to launch \`${cmd}\`: ${err.message}`;
+        logEmitter.emitLog(deploymentId, `--- Build Failed --- ${msg}\n`);
+        reject(new Error(msg));
+      });
+
+      proc.on("close", (code) => {
+        if (code === 0) return resolve();
+        const hint = classifyBuildFailure(builder, code, stderrTail);
+        logEmitter.emitLog(
+          deploymentId,
+          `--- Build Failed (exit ${code}) --- ${hint}\n`,
+        );
+        reject(new Error(hint));
+      });
+    });
   }
 }
 
