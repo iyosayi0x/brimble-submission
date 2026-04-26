@@ -3,17 +3,22 @@ import Docker from "dockerode";
 import deploymentService from "./deployment.service";
 import { ProxyService } from "./proxy.service";
 import { logEmitter } from "@/utils/log-emitter";
+import projectService from "./project.service";
 
 const docker = new Docker({ socketPath: "/var/run/docker.sock" });
 
 export class DockerService {
-  async runContainer(deploymentId: string, imageTag: string, slug: string) {
+  async runContainer(
+    deploymentId: string,
+    imageTag: string,
+    projectSlug: string,
+  ) {
     /**
      * 1. create the container
      */
     const container = await docker.createContainer({
       Image: imageTag,
-      name: `brimble-${slug}-${deploymentId.substring(0, 5)}`,
+      name: `brimble-${projectSlug}-${deploymentId.substring(0, 5)}`,
       HostConfig: {
         NetworkMode: CONFIGS.DOCKER_NETWORK_NAME,
         Memory: 512 * 1024 * 1024, // 512 limit
@@ -34,7 +39,7 @@ export class DockerService {
     const internalIp =
       info.NetworkSettings.Networks[CONFIGS.DOCKER_NETWORK_NAME].IPAddress;
 
-    const projectUrl = `${CONFIGS.APP_DOMAIN_SECURE ? "https" : "http"}://${slug}.${CONFIGS.APP_DOMAIN}`;
+    const projectUrl = `${CONFIGS.APP_DOMAIN_SECURE ? "https" : "http"}://${projectSlug}.${CONFIGS.APP_DOMAIN}`;
 
     /**
      * register with proxy
@@ -43,12 +48,17 @@ export class DockerService {
       `logs:${deploymentId}`,
       "--- Step 4: Configuring Network Routing ---\n",
     );
-    await ProxyService.registerRoute(slug, internalIp);
+    await ProxyService.registerRoute(projectSlug, internalIp);
 
     logEmitter.emit(
       `logs:${deploymentId}`,
       `✨ Deployment Live: ${projectUrl}`,
     );
+
+    /**
+     * stop existing running cntainers
+     */
+    await projectService.stopRunningProjectContainers(projectSlug);
 
     /**
      * update db with live data
@@ -73,7 +83,10 @@ export class DockerService {
       await container.stop({ t: 5 });
     } catch (err: any) {
       if (err?.statusCode !== 304 && err?.statusCode !== 404) {
-        console.error("[Docker] Failed to stop container:", err?.message ?? err);
+        console.error(
+          "[Docker] Failed to stop container:",
+          err?.message ?? err,
+        );
       }
     }
 

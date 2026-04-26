@@ -1,8 +1,9 @@
 import db from "@/database";
-import { projects } from "@/database/schema";
+import { deployments, projects } from "@/database/schema";
 import { Project } from "@/types/dynamic";
 import cursorPaginate from "@/utils/pagination";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import deploymentService from "./deployment.service";
 
 class ProjectService {
   /**
@@ -68,6 +69,38 @@ class ProjectService {
       cursor,
       limit: 20,
     });
+  }
+
+  /**
+   * stop all running deployments
+   * @param slug
+   */
+  async stopRunningProjectContainers(slug: string) {
+    const project = await db.query.projects.findFirst({
+      where: eq(projects.slug, slug),
+    });
+
+    if (project) {
+      /**
+       * find deployments
+       */
+      const runningDeployments = await db.query.deployments.findMany({
+        where: and(
+          eq(deployments.projectId, project.id),
+          eq(deployments.status, "RUNNING"),
+        ),
+      });
+
+      /**
+       * shutdown deployments
+       */
+      await Promise.all(
+        runningDeployments.map(
+          async (deployment) =>
+            await deploymentService.shutDownDeployment(deployment),
+        ),
+      );
+    }
   }
 }
 

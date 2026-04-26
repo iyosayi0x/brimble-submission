@@ -12,14 +12,3 @@ http://localhost {
 http://api.localhost {
     reverse_proxy backend:8000
 }
-
-# This handles the dynamic deployments
-http://*.localhost {
-    # Extract the 'my-app' part from the URL
-    @name header_regexp name Host ^([^.]+)\.localhost$
-    
-    # Send traffic to the container with that same name
-    reverse_proxy {re.name.1}:3000 {
-        header_up Host {host}
-    }
-}

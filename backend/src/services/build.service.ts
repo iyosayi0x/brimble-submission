@@ -13,7 +13,7 @@ import dockerService from "./docker.service";
 import { ProxyService } from "./proxy.service";
 
 export class BuildService {
-  private static STORAGE_PATH = "/tmp/brimble-builds";
+  private STORAGE_PATH = "/tmp/brimble-builds";
 
   /**
    * ensures url passed in is a valid gitUrl
@@ -141,16 +141,10 @@ export class BuildService {
       throw new CustomError("Deployment not found", 404);
     }
     if (target.status !== "RUNNING") {
-      throw new CustomError(
-        "Can only rollback to a running deployment",
-        400,
-      );
+      throw new CustomError("Can only rollback to a running deployment", 400);
     }
     if (!target.internalIp) {
-      throw new CustomError(
-        "Target deployment has no routable address",
-        400,
-      );
+      throw new CustomError("Target deployment has no routable address", 400);
     }
 
     const project = await projectService.getProjectById(target.projectId);
@@ -192,7 +186,7 @@ export class BuildService {
       /**
        * execute building
        */
-      await BuildService.execute(deploymentId, gitUrl, imageTag);
+      await this.execute(deploymentId, gitUrl, imageTag);
 
       logEmitter.emit(
         `logs:${deploymentId}`,
@@ -208,7 +202,7 @@ export class BuildService {
     }
   }
 
-  static async execute(deploymentId: string, gitUrl: string, imageTag: string) {
+  async execute(deploymentId: string, gitUrl: string, imageTag: string) {
     const repoPath = path.join(this.STORAGE_PATH, deploymentId);
 
     try {

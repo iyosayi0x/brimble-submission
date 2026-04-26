@@ -127,6 +127,24 @@ class DeploymentService {
     });
   }
 
+  async shutDownDeployment(deployment: Deployment) {
+    /**
+     * remove containers
+     */
+
+    await dockerService.stopAndRemoveContainer(deployment.containerId!);
+
+    /**
+     * update deploymentId
+     */
+    await db
+      .update(deployments)
+      .set({
+        status: "STOPPED",
+      })
+      .where(eq(deployments.id, deployment.id));
+  }
+
   /**
    * shuts down running deployments on server stop
    * @returns void
@@ -145,27 +163,15 @@ class DeploymentService {
           isNotNull(deployments.containerId),
         ),
       );
-    console.log(activeDeployments);
 
     /**
-     * remove containers
+     * trigger shut down deployment
      */
     await Promise.all(
-      activeDeployments.map(async (deployment) => {
-        dockerService.stopAndRemoveContainer(deployment.containerId!);
-      }),
+      activeDeployments.map(
+        async (deployment) => await this.shutDownDeployment(deployment),
+      ),
     );
-
-    /**
-     * change status
-     */
-    const deploymentIds = activeDeployments.map((item) => item.id);
-    return await db
-      .update(deployments)
-      .set({
-        status: "STOPPED",
-      })
-      .where(inArray(deployments.id, deploymentIds));
   }
 }
 

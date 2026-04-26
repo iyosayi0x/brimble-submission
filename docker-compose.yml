@@ -4,6 +4,7 @@ services:
       context: ./backend
       dockerfile: ./Dockerfile
       target: ${ENVIRONMENT:-runner}
+    init: true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./backend:/app/
