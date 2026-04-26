@@ -5,7 +5,8 @@ import { Icon } from "@iconify/vue";
 import { toast } from "vue3-toastify";
 
 import StatusBadge from "./StatusBadge.vue";
-import { fetchDeploymentVersions } from "../lib/http/query";
+import LogTerminal from "./LogTerminal.vue";
+import { fetchDeploymentVersions, subscribeToLogs } from "../lib/http/query";
 import {
   deleteDeployment,
   deleteProject,
@@ -23,6 +24,49 @@ const emit = defineEmits<{ close: [] }>();
 
 const queryClient = useQueryClient();
 const pendingDeploymentId = ref<string | null>(null);
+
+const logsDeployment = ref<Deployment | null>(null);
+const logLines = ref<string[]>([]);
+const logStatus = ref("Idle");
+const isStreamingLogs = ref(false);
+
+/**
+ * Owns the active SSE subscription. Closures from `subscribeToLogs` are
+ * stored here so any of `startLogStream`, `stopLogStream`, or the unmount
+ * hook can tear it down without each one tracking its own state.
+ */
+let closeLogStream: (() => void) | null = null;
+
+const stopLogStream = () => {
+  closeLogStream?.();
+  closeLogStream = null;
+  isStreamingLogs.value = false;
+};
+
+const appendLogChunk = (chunk: string) => {
+  // History replays arrive as one multi-line blob; split so per-line
+  // coloring in LogTerminal still applies.
+  for (const line of chunk.split("\n")) {
+    if (line.length > 0) logLines.value.push(line);
+  }
+};
+
+const startLogStream = (deployment: Deployment) => {
+  stopLogStream();
+  logLines.value = [];
+  logsDeployment.value = deployment;
+  logStatus.value = "Streaming";
+  isStreamingLogs.value = true;
+  closeLogStream = subscribeToLogs(
+    deployment.id,
+    appendLogChunk,
+    () => {
+      logStatus.value = "Disconnected";
+      isStreamingLogs.value = false;
+      closeLogStream = null;
+    },
+  );
+};
 
 /**
  * query
@@ -120,6 +164,15 @@ const handleDeleteProject = () => {
   deleteProjectMutation(props.project.id);
 };
 
+const handleViewLogs = (deployment: Deployment) => startLogStream(deployment);
+
+const handleCloseLogs = () => {
+  stopLogStream();
+  logsDeployment.value = null;
+  logLines.value = [];
+  logStatus.value = "Idle";
+};
+
 const handleDeleteDeployment = (deployment: Deployment) => {
   if (!canDelete(deployment)) return;
   const message = isActive(deployment)
@@ -138,7 +191,10 @@ const handleKeydown = (e: KeyboardEvent) => {
  * life cycle
  */
 onMounted(() => window.addEventListener("keydown", handleKeydown));
-onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
+onUnmounted(() => {
+  window.removeEventListener("keydown", handleKeydown);
+  stopLogStream();
+});
 </script>
 
 <template>
@@ -204,20 +260,44 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
           class="flex items-center justify-between px-4 py-2.5 border-b border-border bg-base/40"
         >
           <div class="flex items-center gap-2">
-            <Icon icon="mdi:history" class="text-muted" :width="13" />
+            <Icon
+              :icon="logsDeployment ? 'mdi:console-line' : 'mdi:history'"
+              class="text-muted"
+              :width="13"
+            />
             <span
               class="text-[11px] font-semibold text-subtle uppercase tracking-widest"
             >
-              Deployment Versions
+              <template v-if="logsDeployment">
+                Logs · v{{ logsDeployment.versionNumber }}
+              </template>
+              <template v-else>Deployment Versions</template>
             </span>
           </div>
-          <span class="text-[10px] font-mono text-subtle">
+          <button
+            v-if="logsDeployment"
+            class="flex items-center gap-1 text-[10px] font-mono text-muted hover:text-primary transition-colors cursor-pointer"
+            @click="handleCloseLogs"
+          >
+            <Icon icon="mdi:arrow-left" :width="12" />
+            Back to versions
+          </button>
+          <span v-else class="text-[10px] font-mono text-subtle">
             {{ deployments.length }} total
           </span>
         </div>
 
+        <!-- Logs view -->
+        <div v-if="logsDeployment" class="p-3">
+          <LogTerminal
+            :logs="logLines"
+            :status="logStatus"
+            :is-building="isStreamingLogs"
+          />
+        </div>
+
         <!-- Table -->
-        <div class="max-h-[60vh] overflow-y-auto">
+        <div v-else class="max-h-[60vh] overflow-y-auto">
           <table class="w-full">
             <thead class="sticky top-0 bg-surface">
               <tr class="border-b border-border">
@@ -343,6 +423,20 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
                     <div
                       class="absolute right-0 top-full mt-1 hidden group-focus-within:block z-20 min-w-[140px] bg-surface border border-border rounded shadow-brutal overflow-hidden py-1"
                     >
+                      <button
+                        class="w-full text-left px-3 py-1.5 text-[11px] font-medium flex items-center gap-2 text-primary hover:bg-elevated transition-colors cursor-pointer"
+                        @click="handleViewLogs(deployment)"
+                      >
+                        <Icon
+                          icon="mdi:console-line"
+                          :width="13"
+                          class="text-muted"
+                        />
+                        View Logs
+                      </button>
+
+                      <div class="h-px bg-border my-1" />
+
                       <button
                         :disabled="!canRollback(deployment)"
                         class="w-full text-left px-3 py-1.5 text-[11px] font-medium flex items-center gap-2 text-primary hover:bg-elevated disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors cursor-pointer"

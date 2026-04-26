@@ -14,24 +14,33 @@ export class LogController {
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
-    /**
-     * the callback will be triggered by build service
-     */
-    const logHandler = (message: string) => {
+    const send = (message: string) => {
       res.write(`data: ${JSON.stringify({ message })}\n\n`);
     };
 
     /**
-     * start listening
+     * Buffer live messages while we read history off disk so we don't lose
+     * lines that arrive mid-replay. Flush the buffer right after the file
+     * contents, then hand off to the long-lived live handler.
      */
-    logEmitter.on(`logs:${id}`, logHandler);
+    const buffered: string[] = [];
+    const bufferHandler = (m: string) => buffered.push(m);
+    logEmitter.on(`logs:${id}`, bufferHandler);
+
+    const history = await logEmitter.readHistory(id);
+    if (history) send(history);
+    buffered.forEach(send);
+    logEmitter.off(`logs:${id}`, bufferHandler);
+
+    const liveHandler = (message: string) => send(message);
+    logEmitter.on(`logs:${id}`, liveHandler);
 
     /**
      * If the user closes the tab or refreshes,
      * stop listening to avoid memory leaks
      */
     req.on("close", () => {
-      logEmitter.off(`logs:${id}`, logHandler);
+      logEmitter.off(`logs:${id}`, liveHandler);
       res.end();
     });
   }

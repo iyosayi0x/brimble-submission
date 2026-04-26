@@ -118,6 +118,7 @@ export class BuildService {
     }
 
     await deploymentService.deleteDeploymentRow(deploymentId);
+    await logEmitter.deleteHistory(deploymentId);
 
     if (wasActive) {
       const next = await deploymentService.getLatestRunning(project.id);
@@ -170,6 +171,10 @@ export class BuildService {
      * tear down the public route before the project disappears
      */
     await ProxyService.deregisterRoute(project.slug);
+
+    await Promise.all(
+      projectDeployments.map((d) => logEmitter.deleteHistory(d.id)),
+    );
 
     /**
      * deployments cascade via FK
@@ -236,8 +241,8 @@ export class BuildService {
        */
       await this.execute(deploymentId, gitUrl, imageTag);
 
-      logEmitter.emit(
-        `logs:${deploymentId}`,
+      logEmitter.emitLog(
+        deploymentId,
         "--- Step 3: Launching Container ---\n",
       );
 
@@ -257,22 +262,19 @@ export class BuildService {
       /**
        * 1. pull the code
        */
-      logEmitter.emit(
-        `logs:${deploymentId}`,
+      logEmitter.emitLog(
+        deploymentId,
         "--- Step 1: Cloning Repository ---\n",
       );
       await fs.mkdir(repoPath, { recursive: true });
       await simpleGit().clone(gitUrl, repoPath);
-      logEmitter.emit(
-        `logs:${deploymentId}`,
-        "Successfully cloned repository.\n",
-      );
+      logEmitter.emitLog(deploymentId, "Successfully cloned repository.\n");
 
       /**
        * 2. build with railpack
        */
-      logEmitter.emit(
-        `logs:${deploymentId}`,
+      logEmitter.emitLog(
+        deploymentId,
         "--- Step 2: Railpack Build Starting ---\n",
       );
 
@@ -290,13 +292,12 @@ export class BuildService {
         );
 
         builder.stdout.on("data", (data) => {
-          // Stream logs directly to the EventEmitter for SSE
-          logEmitter.emit(`logs:${deploymentId}`, data.toString());
+          logEmitter.emitLog(deploymentId, data.toString());
         });
 
         builder.stderr.on("data", (data) => {
           // Railpack often sends progress to stderr, so we capture both
-          logEmitter.emit(`logs:${deploymentId}`, data.toString());
+          logEmitter.emitLog(deploymentId, data.toString());
         });
 
         builder.on("close", async (code) => {
@@ -304,14 +305,11 @@ export class BuildService {
           await fs.rm(repoPath, { recursive: true, force: true });
 
           if (code === 0) {
-            logEmitter.emit(
-              `logs:${deploymentId}`,
-              "--- Build Successful ---\n",
-            );
+            logEmitter.emitLog(deploymentId, "--- Build Successful ---\n");
             resolve(true);
           } else {
-            logEmitter.emit(
-              `logs:${deploymentId}`,
+            logEmitter.emitLog(
+              deploymentId,
               `--- Build Failed (Exit Code: ${code}) ---\n`,
             );
             reject(new Error(`Railpack exited with code ${code}`));
@@ -319,10 +317,7 @@ export class BuildService {
         });
       });
     } catch (error: any) {
-      logEmitter.emit(
-        `logs:${deploymentId}`,
-        `CRITICAL ERROR: ${error.message}\n`,
-      );
+      logEmitter.emitLog(deploymentId, `CRITICAL ERROR: ${error.message}\n`);
       throw error;
     }
   }

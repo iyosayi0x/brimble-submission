@@ -27,10 +27,7 @@ export class DockerService {
 
     await container.start();
 
-    logEmitter.emit(
-      `logs:${deploymentId}`,
-      "Container started successfully.\n",
-    );
+    logEmitter.emitLog(deploymentId, "Container started successfully.\n");
 
     /**
      * inspect to get the ip address inside brimble-net
@@ -44,16 +41,13 @@ export class DockerService {
     /**
      * register with proxy
      */
-    logEmitter.emit(
-      `logs:${deploymentId}`,
+    logEmitter.emitLog(
+      deploymentId,
       "--- Step 4: Configuring Network Routing ---\n",
     );
     await ProxyService.registerRoute(projectSlug, internalIp);
 
-    logEmitter.emit(
-      `logs:${deploymentId}`,
-      `✨ Deployment Live: ${projectUrl}`,
-    );
+    logEmitter.emitLog(deploymentId, `✨ Deployment Live: ${projectUrl}`);
 
     /**
      * stop existing running cntainers
