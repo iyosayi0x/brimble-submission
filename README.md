@@ -52,10 +52,15 @@ I split the data model into `Projects` (the identity) and `Deployments` (the ver
 
 1. **Clone the repo**
 2. **Environment Setup:**
+
    ```bash
    cp .env.example .env
-   # Make sure your DATABASE_URL points to a Postgres instance
    ```
+
+   The `ENVIRONMENT` variable controls how the stack is built and served:
+   - **`runner`** — production-optimized build. The frontend is served by nginx and the backend runs a compiled production build.
+   - **`dev`** — development mode with hot reload for both frontend and backend.
+
 3. **Docker Compose:**
    ```bash
    docker-compose up --build

@@ -4,20 +4,14 @@ import morgan from "morgan";
 import express from "express";
 import cors from "cors";
 
+/**
+ * Allow any origin while still supporting credentialed requests. The
+ * frontend uses `credentials: "include"` (and EventSource sends cookies
+ * via withCredentials),
+ */
 const CORS_SETTINGS = {
+  origin: true,
   credentials: true,
-  origin: (
-    origin: string | undefined,
-    callback: (err: Error | null, allow?: boolean) => void,
-  ) => {
-    // Allow requests with no origin (curl, server-to-server)
-    if (!origin) return callback(null, true);
-    // Allow any localhost origin (plain or any subdomain/port)
-    if (/^https?:\/\/([^.]+\.)?localhost(:\d+)?$/.test(origin)) {
-      return callback(null, true);
-    }
-    callback(new Error(`CORS: origin not allowed — ${origin}`));
-  },
 };
 
 export default (app: Application) => {

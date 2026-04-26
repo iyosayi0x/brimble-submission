@@ -203,11 +203,11 @@ export class BuildService {
     if (!target) {
       throw new CustomError("Deployment not found", 404);
     }
-    if (target.status !== "RUNNING") {
-      throw new CustomError("Can only rollback to a running deployment", 400);
-    }
-    if (!target.internalIp) {
-      throw new CustomError("Target deployment has no routable address", 400);
+    if (target.status !== "RUNNING" && target.status !== "STOPPED") {
+      throw new CustomError(
+        "Can only rollback to a running or stopped deployment",
+        400,
+      );
     }
 
     const project = await projectService.getProjectById(target.projectId);
@@ -215,23 +215,46 @@ export class BuildService {
       throw new CustomError("Project not found", 404);
     }
 
-    const newer = await deploymentService.listNewerRunning(
+    /**
+     * If the target is already RUNNING the proxy can be flipped to it as-is.
+     * If it's STOPPED we revive its container first — restart picks a new
+     * IP, so capture that and persist it before re-routing.
+     */
+    let internalIp = target.internalIp;
+    if (target.status === "STOPPED") {
+      const revived = await dockerService.reviveContainer(target, project.slug);
+      internalIp = revived.internalIp;
+      await deploymentService.updateDeployment(target.id, {
+        status: "RUNNING",
+        containerId: revived.containerId,
+        internalIp: revived.internalIp,
+      });
+    }
+
+    if (!internalIp) {
+      throw new CustomError("Target deployment has no routable address", 400);
+    }
+
+    /**
+     * Stop every other RUNNING sibling so the project has exactly one
+     * live version after we re-route. Covers both rolling back to an
+     * older deployment (newer is currently active) and "start" on the
+     * latest STOPPED deployment (defensive — any leftover RUNNING
+     * sibling gets cleaned up here).
+     */
+    const others = await deploymentService.listOtherRunning(
       target.projectId,
-      target.versionNumber,
+      target.id,
     );
 
-    for (const dep of newer) {
+    for (const dep of others) {
       if (dep.containerId) {
         await dockerService.stopAndRemoveContainer(dep.containerId);
       }
       await deploymentService.updateDeployment(dep.id, { status: "STOPPED" });
     }
 
-    await ProxyService.registerRoute(
-      project.slug,
-      target.internalIp,
-      project.port,
-    );
+    await ProxyService.registerRoute(project.slug, internalIp, project.port);
 
     return { id: target.id, versionNumber: target.versionNumber };
   }

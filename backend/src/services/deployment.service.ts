@@ -2,7 +2,7 @@ import db from "@/database";
 import { deployments } from "@/database/schema";
 import { Deployment } from "@/types/dynamic";
 import cursorPaginate from "@/utils/pagination";
-import { and, desc, eq, gt, inArray, isNotNull, ne } from "drizzle-orm";
+import { and, desc, eq, isNotNull, ne } from "drizzle-orm";
 import dockerService from "./docker.service";
 
 class DeploymentService {
@@ -52,19 +52,20 @@ class DeploymentService {
   }
 
   /**
-   * RUNNING deployments with a higher version number — used to stop newer
-   * containers on rollback.
+   * Every RUNNING deployment for a project except the one we're about to
+   * promote — used by rollback/start to ensure only a single version of
+   * the project is live at any time.
    */
-  async listNewerRunning(
+  async listOtherRunning(
     projectId: string,
-    versionNumber: number,
+    exceptDeploymentId: string,
     tx: TransactionClient = db,
   ): Promise<Deployment[]> {
     return await tx.query.deployments.findMany({
       where: and(
         eq(deployments.projectId, projectId),
         eq(deployments.status, "RUNNING"),
-        gt(deployments.versionNumber, versionNumber),
+        ne(deployments.id, exceptDeploymentId),
       ),
     });
   }

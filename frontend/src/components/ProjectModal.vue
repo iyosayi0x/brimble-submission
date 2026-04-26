@@ -87,6 +87,13 @@ const activeDeploymentId = computed(() => {
 });
 
 /**
+ * The most recent deployment by version. When this one is STOPPED with
+ * nothing newer running, the rollback action is functionally a "start" —
+ * we relabel the button so the UX matches the user's intent.
+ */
+const latestDeploymentId = computed(() => deployments.value[0]?.id ?? null);
+
+/**
  * mutations
  */
 const invalidateDeployments = () => {
@@ -141,8 +148,11 @@ const isPending = (deployment: Deployment) =>
 
 const canRollback = (deployment: Deployment) =>
   !isActive(deployment) &&
-  deployment.status === "RUNNING" &&
+  (deployment.status === "RUNNING" || deployment.status === "STOPPED") &&
   !pendingDeploymentId.value;
+
+const isStartable = (deployment: Deployment) =>
+  deployment.id === latestDeploymentId.value && deployment.status === "STOPPED";
 
 const canDelete = (deployment: Deployment) =>
   !pendingDeploymentId.value && !isPending(deployment);
@@ -442,13 +452,15 @@ onUnmounted(() => {
                           :icon="
                             isPending(deployment)
                               ? 'mdi:loading'
-                              : 'mdi:backup-restore'
+                              : isStartable(deployment)
+                                ? 'mdi:play'
+                                : 'mdi:backup-restore'
                           "
                           :width="13"
                           class="text-muted"
                           :class="{ 'animate-spin': isPending(deployment) }"
                         />
-                        Rollback
+                        {{ isStartable(deployment) ? "Start" : "Rollback" }}
                       </button>
 
                       <div class="h-px bg-border my-1" />

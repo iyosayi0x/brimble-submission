@@ -1,4 +1,9 @@
-type DeploymentStatus = "PENDING" | "BUILDING" | "RUNNING" | "FAILED";
+type DeploymentStatus =
+  | "PENDING"
+  | "BUILDING"
+  | "RUNNING"
+  | "FAILED"
+  | "STOPPED";
 
 type BaseAPIResponse<T> = {
   message: string;
